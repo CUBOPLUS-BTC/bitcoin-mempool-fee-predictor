@@ -1,0 +1,50 @@
+name: Auto-Retrain Models
+
+on:
+  # Run every 24 hours at 3 AM UTC
+  schedule:
+    - cron: '0 3 * * *'
+  
+  # Allow manual trigger
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: 📦 Install dependencies
+        run: |
+          pip install pandas numpy xgboost ccxt scikit-learn pyyaml loguru joblib ta
+      
+      - name: 🔄 Run auto-retrain
+        run: |
+          python scripts/auto_retrain.py --no-validate
+      
+      - name: 💾 Commit and push new models
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "🤖 Auto-update: Retrained models"
+          file_pattern: |
+            models/*.json
+            logs/retrain_results_*.json
+      
+      - name: 📤 Upload training artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrained-models-${{ github.run_number }}
+          path: |
+            models/*_optimized_*.json
+            logs/retrain_results_*.json
+          retention-days: 30

@@ -1,0 +1,46 @@
+name: Live Trading Test - Every 30min
+
+on:
+  # Run every 30 minutes
+  schedule:
+    - cron: '*/30 * * * *'
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: 📦 Install dependencies
+        run: |
+          pip install pandas numpy xgboost ccxt scikit-learn pyyaml loguru joblib ta
+
+      - name: 🤖 Run live prediction
+        run: |
+          python live_predict.py
+
+      - name: 💾 Commit and push results
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "🤖 Auto-update: Live predictions"
+          file_pattern: "bitacora_new_models.csv"
+
+      - name: 📤 Upload bitacora artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitacora-${{ github.run_number }}
+          path: bitacora_new_models.csv
+          retention-days: 30

@@ -1,0 +1,115 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Data files (DO NOT commit large datasets)
+*.csv
+*.parquet
+*.h5
+*.hdf5
+data/raw/*
+data/processed/*
+!data/.gitkeep
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Model files (DO NOT commit trained models)
+models/*.json
+models/*.pkl
+models/*.joblib
+models/*.h5
+models/*.ckpt
+models/production/*
+models/experiments/*
+!models/.gitkeep
+!models/production/.gitkeep
+!models/experiments/.gitkeep
+
+# Logs
+logs/
+*.log
+*.jsonl
+!logs/.gitkeep
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Testing
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
+.tox/
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Results and outputs
+results/backtest/*.csv
+results/predictions/*.csv
+results/reports/*.txt
+results/reports/*.html
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
