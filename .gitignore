@@ -113,3 +113,7 @@ results/reports/*.html
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# YAML files
+*.yml
+*.yaml
