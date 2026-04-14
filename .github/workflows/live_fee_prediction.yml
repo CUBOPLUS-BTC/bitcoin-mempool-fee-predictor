@@ -8,6 +8,10 @@ on:
   # Allow manual trigger
   workflow_dispatch:
 
+concurrency:
+  group: predictions-db-lock
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
