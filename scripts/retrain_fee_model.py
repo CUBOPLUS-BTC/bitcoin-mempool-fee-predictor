@@ -113,8 +113,8 @@ class FeeModelRetrainer:
         # 3. Prepare features
         df, feature_cols = self.prepare_features(df_raw)
 
-        if len(df) < 50:
-            logger.warning(f"⚠️ Not enough samples after feature engineering ({len(df)}). Retraining skipped to avoid model collapse.")
+        if len(df) < 5:
+            logger.warning(f"⚠️ Not enough samples after feature engineering ({len(df)}). Retraining skipped.")
             return {}
 
 

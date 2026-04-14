@@ -39,10 +39,10 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: 📸 Collect fresh mempool data
+      - name: 📸 Collect mempool data (40 snapshots, ~5 min)
         run: |
           echo "🔄 Collecting mempool snapshots for retraining..."
-          python scripts/collector_daemon.py --test-run
+          python scripts/collector_daemon.py --interval 8 --test-run
           echo "✅ Collection complete"
 
       - name: 📦 Consolidate snapshot data
@@ -59,11 +59,7 @@ jobs:
               print('⚠️ No snapshots to consolidate — skipping')
           "
 
-      - name: 🔧 Feature Engineering
-        run: |
-          python scripts/phase1_feature_engineering.py
-
-      - name: 🔄 Retrain XGBoost + LightGBM Models
+      - name: 🔄 Retrain models (feature eng + training)
         run: |
           VALIDATE_FLAG=""
           if [ "${{ inputs.skip_validation }}" = "true" ]; then

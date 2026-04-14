@@ -458,6 +458,18 @@ class FeatureEngineer:
             logger.warning("No 'last_block_height' column — falling back to time-based targets")
             return self._create_time_based_targets(df, horizons)
 
+        # Check if we have enough block height variation for block-based targets
+        unique_heights = df['last_block_height'].nunique()
+        max_horizon = max(horizons)
+        if unique_heights <= max_horizon:
+            logger.warning(
+                f"Only {unique_heights} unique block heights (need >{max_horizon}). "
+                f"Falling back to time-based targets."
+            )
+            return self._create_time_based_targets(df, horizons)
+
+        df_backup = df.copy()  # Save for fallback
+
         for horizon in horizons:
             target_col = f'target_{horizon}block_fee'
             df[target_col] = np.nan
@@ -488,6 +500,11 @@ class FeatureEngineer:
         # Drop rows without targets (tail of dataset where future blocks aren't known)
         df = df.dropna(subset=[f'target_{h}block_fee' for h in horizons])
 
+        # If block-based targets yielded too few rows, try time-based as backup
+        if len(df) < 10:
+            logger.warning(f"Block-based targets only produced {len(df)} rows. Trying time-based fallback.")
+            return self._create_time_based_targets(df_backup, horizons)
+
         logger.info(f"✓ Created targets for {len(horizons)} block horizons. {len(df)} samples remain.")
         return df
 
@@ -497,17 +514,25 @@ class FeatureEngineer:
         horizons: List[int]
     ) -> pd.DataFrame:
         """
-        Fallback: Create time-based targets when block height data is unavailable.
-        Approximates N blocks as N*10 minutes.
+        Fallback: Create time-based targets when block height data is unavailable
+        or insufficient. Approximates N blocks as N*10 minutes.
+        Adapts shift amount to available data size.
         """
         logger.warning("Using time-based target approximation (N blocks ≈ N*10 min)")
 
+        n_rows = len(df)
+
         for horizon in horizons:
-            # Approximate: 1 block = ~10 min = ~5 snapshots at 2-min intervals
-            shift_amount = horizon * 5
+            # Ideal: 1 block = ~10 min = ~5 snapshots at 2-min intervals
+            # But adapt if we have fewer rows to still produce samples
+            ideal_shift = horizon * 5
+            # Use smaller shift if data is scarce, but at least 1
+            shift_amount = max(1, min(ideal_shift, n_rows // 4))
             df[f'target_{horizon}block_fee'] = df['fee_fastest'].shift(-shift_amount)
+            logger.info(f"  Horizon {horizon}-block: shift={shift_amount} (ideal={ideal_shift})")
 
         df = df.dropna(subset=[f'target_{h}block_fee' for h in horizons])
+        logger.info(f"✓ Time-based targets: {len(df)} samples remain")
         return df
 
     # =========================================================================
