@@ -1,0 +1,84 @@
+name: Live Fee Prediction — Every 10min
+
+on:
+  # Run every 10 minutes for fee predictions
+  schedule:
+    - cron: '*/10 * * * *'
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: 📥 Download latest snapshots
+        uses: actions/download-artifact@v4
+        with:
+          name: mempool-snapshots
+          path: data/snapshots/
+        continue-on-error: true
+
+      - name: 📥 Download latest models
+        uses: actions/download-artifact@v4
+        with:
+          name: fee-models-latest
+          path: models/
+        continue-on-error: true
+
+      - name: 📸 Collect current mempool snapshot
+        run: |
+          python -c "
+          from src.ingestion import MempoolDataIngestion
+          ingestion = MempoolDataIngestion()
+          path = ingestion.fetch_and_save()
+          if path:
+              print(f'✅ Snapshot saved: {path}')
+          else:
+              print('⚠️ Snapshot collection failed')
+          "
+
+      - name: ⚡ Run live fee prediction
+        run: |
+          python scripts/live_predict.py --once
+
+      - name: 💾 Commit predictions
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "⚡ Auto-update: Fee predictions"
+          file_pattern: "bitacora_fee_predictions.csv"
+
+      - name: 📤 Upload prediction artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fee-predictions-${{ github.run_number }}
+          path: bitacora_fee_predictions.csv
+          retention-days: 30
+
+      - name: 📤 Update snapshot archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: mempool-snapshots
+          path: |
+            data/snapshots/**/*.json
+            data/snapshots/*.parquet
+          retention-days: 90
+          overwrite: true

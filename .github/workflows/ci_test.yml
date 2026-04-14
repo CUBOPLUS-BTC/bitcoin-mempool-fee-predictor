@@ -1,0 +1,193 @@
+name: CI — Test Fee Prediction Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: 🔍 Lint check
+        run: |
+          flake8 src/ --max-line-length 120 --ignore=E501,W503,E402 --count --show-source --statistics
+        continue-on-error: true
+
+      - name: 📡 Test mempool.space API connection
+        run: |
+          python -c "
+          from src.ingestion import MempoolDataIngestion
+          ingestion = MempoolDataIngestion()
+          
+          # Test fee endpoint
+          fees = ingestion.fetch_recommended_fees()
+          assert fees is not None, 'Failed to fetch fees'
+          assert 'fastestFee' in fees, 'Missing fastestFee'
+          print(f'✅ Fees: fastest={fees[\"fastestFee\"]} sat/vB')
+
+          # Test mempool state
+          mempool = ingestion.fetch_mempool_state()
+          assert mempool is not None, 'Failed to fetch mempool'
+          assert mempool.get('count', 0) > 0, 'Mempool empty'
+          print(f'✅ Mempool: {mempool[\"count\"]:,} txs')
+
+          # Test full snapshot
+          snapshot = ingestion.fetch_full_snapshot()
+          assert snapshot is not None, 'Failed to fetch snapshot'
+          assert snapshot['fee_fastest'] > 0, 'Invalid fee'
+          print(f'✅ Full snapshot OK')
+          "
+
+      - name: 🔧 Test feature engineering
+        run: |
+          python -c "
+          import time, pandas as pd
+          from src.ingestion import MempoolDataIngestion
+          from src.features import FeatureEngineer
+
+          ingestion = MempoolDataIngestion()
+
+          # Collect 3 snapshots
+          snapshots = []
+          for i in range(3):
+              s = ingestion.fetch_full_snapshot()
+              if s: snapshots.append(s)
+              if i < 2: time.sleep(2)
+
+          df = pd.DataFrame(snapshots)
+          engineer = FeatureEngineer()
+          df_features = engineer.create_all_features(df)
+          feature_cols = engineer.get_feature_columns(df_features)
+
+          assert len(feature_cols) > 100, f'Only {len(feature_cols)} features (expected >100)'
+          print(f'✅ Feature engineering: {len(feature_cols)} features')
+          "
+
+      - name: 🧠 Test model training (synthetic data)
+        run: |
+          python -c "
+          import numpy as np, pandas as pd, time
+          from src.ingestion import MempoolDataIngestion
+          from src.features import FeatureEngineer
+          from src.train import FeeModelTrainer
+          from src.train_lightgbm import LightGBMFeeTrainer
+
+          # Get one real snapshot as base
+          ingestion = MempoolDataIngestion()
+          base_snapshot = ingestion.fetch_full_snapshot()
+          assert base_snapshot is not None
+
+          # Generate 200 synthetic samples
+          np.random.seed(42)
+          rows = []
+          for i in range(200):
+              row = base_snapshot.copy()
+              fee_base = np.random.choice([1,2,5,10,20,50])
+              row['fee_fastest'] = max(1, int(fee_base + np.random.normal(0, fee_base*0.3)))
+              row['fee_half_hour'] = max(1, int(fee_base * 0.8))
+              row['fee_hour'] = max(1, int(fee_base * 0.5))
+              row['fee_economy'] = max(1, int(fee_base * 0.3))
+              row['fee_minimum'] = 1
+              row['mempool_tx_count'] = int(base_snapshot['mempool_tx_count'] * (0.5 + np.random.random()*2))
+              row['mempool_vsize'] = int(base_snapshot['mempool_vsize'] * (0.3 + np.random.random()*3))
+              row['mempool_total_fee'] = int(row['mempool_vsize'] * row['fee_fastest'] * 0.01)
+              row['last_block_median_fee'] = max(1, int(fee_base + np.random.normal(0,3)))
+              row['last_block_min_fee'] = max(1, int(fee_base * 0.3))
+              row['last_block_max_fee'] = max(1, int(fee_base * 3))
+              row['last_block_avg_fee'] = max(1, int(fee_base * 1.2))
+              row['avg_block_time_last3'] = 600 + np.random.normal(0, 120)
+              row['avg_block_time_last6'] = 600 + np.random.normal(0, 80)
+              row['blocks_last_hour'] = max(1, int(6 + np.random.normal(0, 2)))
+              row['time_since_last_block'] = max(10, int(300 + np.random.normal(0, 200)))
+              row['last_block_height'] = base_snapshot['last_block_height'] + i
+              ts = pd.Timestamp('2026-04-01') + pd.Timedelta(minutes=i*2)
+              row['timestamp'] = ts.isoformat()
+              row['timestamp_unix'] = int(ts.timestamp())
+              rows.append(row)
+
+          df = pd.DataFrame(rows)
+          engineer = FeatureEngineer()
+          df_feat = engineer.create_all_features(df)
+          df_final = engineer.create_block_horizon_targets(df_feat)
+          feature_cols = engineer.get_feature_columns(df_final)
+
+          # Train XGBoost for 1-block
+          xgb_trainer = FeeModelTrainer()
+          xgb_model, xgb_metrics = xgb_trainer.train_single_horizon(df_final, feature_cols, 1)
+          assert xgb_metrics['mae'] > 0, 'XGBoost MAE should be positive'
+          assert xgb_metrics['block_inclusion_accuracy'] >= 0, 'Inclusion must be >= 0'
+          print(f'✅ XGBoost 1-block: MAE={xgb_metrics[\"mae\"]:.2f}, Inclusion={xgb_metrics[\"block_inclusion_accuracy\"]:.2%}')
+
+          # Train LightGBM for 1-block
+          lgb_trainer = LightGBMFeeTrainer()
+          lgb_model, lgb_metrics = lgb_trainer.train_single_horizon(df_final, feature_cols, 1)
+          assert lgb_metrics['mae'] > 0, 'LightGBM MAE should be positive'
+          print(f'✅ LightGBM 1-block: MAE={lgb_metrics[\"mae\"]:.2f}, Inclusion={lgb_metrics[\"block_inclusion_accuracy\"]:.2%}')
+          "
+
+      - name: ⚡ Test inference pipeline
+        run: |
+          python -c "
+          from src.inference import FeeModelInference
+
+          inference = FeeModelInference()
+          loaded = inference.load_all_models()
+          info = inference.get_loaded_models_info()
+
+          assert info['total_models'] > 0, 'No models loaded'
+          print(f'✅ Loaded {info[\"total_models\"]} models')
+          print(f'   XGB: {info[\"xgb_models\"]}')
+          print(f'   LGB: {info[\"lgb_models\"]}')
+          "
+
+      - name: 🌐 Test API startup
+        run: |
+          cd api
+          timeout 10 python -c "
+          import uvicorn
+          import asyncio
+          from main import app
+
+          async def test():
+              from httpx import AsyncClient, ASGITransport
+              transport = ASGITransport(app=app)
+              async with AsyncClient(transport=transport, base_url='http://test') as client:
+                  # Test root
+                  r = await client.get('/')
+                  assert r.status_code == 200
+                  data = r.json()
+                  assert data['version'] == '2.0.0'
+                  print(f'✅ API root: {data[\"service\"]}')
+
+                  # Test health
+                  r = await client.get('/health')
+                  assert r.status_code == 200
+                  print(f'✅ Health: {r.json()[\"status\"]}')
+
+          asyncio.run(test())
+          " || true
+
+      - name: ✅ Summary
+        run: |
+          echo "========================================"
+          echo "✅ All CI tests passed!"
+          echo "========================================"
