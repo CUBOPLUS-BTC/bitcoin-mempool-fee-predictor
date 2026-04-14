@@ -1,0 +1,21 @@
+{
+  "driver": "xgboost",
+  "horizon": "1block",
+  "metrics": {
+    "horizon_blocks": 1,
+    "mse": 0.00018765246762995086,
+    "rmse": 0.013698630136986358,
+    "mae": 0.013698630136986356,
+    "r2": 0.0,
+    "block_inclusion_accuracy": 0.0,
+    "avg_overpay_sat_vb": 0.0,
+    "median_overpay_sat_vb": 0.0,
+    "avg_underpay_sat_vb": 0.013698630136986356,
+    "overpay_mape": 0.0,
+    "within_10pct": 1.0,
+    "within_20pct": 1.0,
+    "within_50pct": 1.0,
+    "asymmetric_loss": 0.00013135672734096557,
+    "mape": 1.3513513513513564
+  }
+}

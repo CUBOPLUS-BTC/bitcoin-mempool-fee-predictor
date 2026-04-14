@@ -67,6 +67,10 @@ jobs:
           fi
           python scripts/retrain_fee_model.py $VALIDATE_FLAG
 
+      - name:  Select and Promote Best Models
+        run: |
+          python scripts/promote_best_models.py
+
       - name:  Sync with remote (prevent push conflicts)
         run: |
           git pull --rebase origin main || true
@@ -79,6 +83,7 @@ jobs:
           file_pattern: |
             models/xgb_fee_*block_latest.json
             models/lgbm_fee_*block_latest.txt
+            models/production/*
             models/*predictions*.csv
             models/training_summary_*.json
             logs/retrain_results_*.json

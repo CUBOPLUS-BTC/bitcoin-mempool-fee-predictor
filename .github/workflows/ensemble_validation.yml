@@ -1,0 +1,45 @@
+name: Ensemble Predictions Validation
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Run every hour
+  workflow_dispatch:      # Allow manual trigger
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      
+    steps:
+      - name:  Checkout repository
+        uses: actions/checkout@v4
+        
+      - name:  Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          
+      - name:  Install dependencies
+        run: |
+          pip install -r requirements.txt
+          
+      - name:  Run validation
+        run: |
+          python scripts/validate_predictions.py
+
+      - name:  Sync with remote
+        run: |
+          git pull --rebase origin main || true
+          
+      - name:  Commit validated predictions
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: " Validate: Updated ensemble prediction status"
+          push_options: "--no-verify"
+          file_pattern: "predictions/ensemble_predictions.csv"

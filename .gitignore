@@ -47,7 +47,8 @@ models/backup_*
 models/production/*
 models/experiments/*
 !models/.gitkeep
-!models/production/.gitkeep
+!models/production/*.json
+!models/production/*.txt
 !models/experiments/.gitkeep
 # Allow latest model files and predictions to be committed
 !models/*_latest.json

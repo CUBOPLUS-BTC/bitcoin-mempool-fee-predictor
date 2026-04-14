@@ -30,7 +30,7 @@ def load_or_create_bitacora():
     """Load existing bitacora or create new one"""
     if os.path.exists(LOG_FILE):
         df = pd.read_csv(LOG_FILE)
-        df['timestamp_pred'] = pd.to_datetime(df['timestamp_pred'])
+        df['timestamp_pred'] = pd.to_datetime(df['timestamp_pred'], format='mixed')
         print(f" Loaded {len(df)} existing predictions")
         return df
     else:
@@ -54,82 +54,6 @@ def load_or_create_bitacora():
         ])
         print(" Created new fee prediction bitacora")
         return df
-
-
-def validate_pending_predictions(df, ingestion):
-    """
-    Validate pending predictions by checking confirmed blocks.
-    If enough blocks have been mined since the prediction,
-    compare predicted fee vs what was actually required.
-    """
-    if df.empty:
-        return df
-
-    pending = df[df['status'] == 'PENDING'].copy()
-    if pending.empty:
-        print("  No pending predictions to validate")
-        return df
-
-    print(f"\n Validating {len(pending)} pending predictions...")
-
-    # Fetch current block data
-    blocks = ingestion.fetch_recent_blocks(count=15)
-    if not blocks:
-        print("  Could not fetch blocks for validation")
-        return df
-
-    current_height = blocks[0].get('height', 0) if blocks else 0
-    validated_count = 0
-    
-    # Cast column to object to avoid TypeError when assigning booleans to a float64 dtype column
-    df['would_confirm'] = df['would_confirm'].astype(object)
-
-    for idx, row in pending.iterrows():
-        pred_time = pd.to_datetime(row['timestamp_pred'], format='mixed')
-        horizon = int(row['horizon_blocks'])
-
-        # Find the block height at prediction time (approximate)
-        # Use the time since prediction to estimate blocks mined
-        # Handle both tz-aware and tz-naive timestamps from CSV
-        if pred_time.tzinfo is None:
-            pred_time = pred_time.tz_localize('UTC')
-        else:
-            pred_time = pred_time.tz_convert('UTC')
-        time_since = (datetime.now(timezone.utc) - pred_time).total_seconds()
-        estimated_blocks_mined = time_since / 600  # ~10 min per block
-
-        # Only validate if enough blocks have passed
-        if estimated_blocks_mined >= horizon + 1:
-            # Find the min fee of blocks that were mined in the horizon window
-            # Use the median fee from recent blocks as ground truth
-            relevant_fees = []
-            for block in blocks:
-                extras = block.get('extras', {})
-                median_fee = extras.get('medianFee', 0)
-                min_fee = extras.get('feeRange', [0])[0] if extras.get('feeRange') else 0
-                if median_fee > 0:
-                    relevant_fees.append(min_fee if min_fee > 0 else median_fee)
-
-            if relevant_fees:
-                # Use the minimum fee across the relevant blocks
-                actual_fee = min(relevant_fees[:horizon]) if len(relevant_fees) >= horizon else min(relevant_fees)
-
-                predicted = row['predicted_fee_sat_vb']
-                would_confirm = predicted >= actual_fee
-                overpay = max(0, predicted - actual_fee)
-
-                df.loc[idx, 'actual_fee'] = actual_fee
-                df.loc[idx, 'would_confirm'] = would_confirm
-                df.loc[idx, 'overpay_sat_vb'] = overpay
-                df.loc[idx, 'status'] = 'VALIDATED'
-
-                validated_count += 1
-
-    if validated_count > 0:
-        print(f" Validated {validated_count} predictions")
-
-    return df
-
 
 def run_live_prediction(single_run: bool = False):
     """Main prediction function"""
@@ -155,9 +79,6 @@ def run_live_prediction(single_run: bool = False):
         print("  No trained models found. Run auto_retrain workflow first.")
         print("   Exiting gracefully.")
         return
-
-    # Validate pending predictions
-    log_df = validate_pending_predictions(log_df, ingestion)
 
     # Fetch live mempool data
     print("\n Fetching mempool state...")
@@ -251,25 +172,10 @@ def run_live_prediction(single_run: bool = False):
 
     total = len(log_df)
     pending = len(log_df[log_df['status'] == 'PENDING'])
-    validated = len(log_df[log_df['status'] == 'VALIDATED'])
 
     print(f"Total predictions: {total}")
     print(f"  - Pending: {pending}")
-    print(f"  - Validated: {validated}")
 
-    if validated > 0:
-        val_df = log_df[log_df['status'] == 'VALIDATED']
-        inclusion_rate = val_df['would_confirm'].mean()
-        avg_overpay = val_df['overpay_sat_vb'].mean()
-        print(f"\nBlock Inclusion Accuracy: {inclusion_rate:.2%}")
-        print(f"Average Overpay: {avg_overpay:.2f} sat/vB")
-
-        for horizon_label in val_df['horizon_label'].unique():
-            h_data = val_df[val_df['horizon_label'] == horizon_label]
-            h_inclusion = h_data['would_confirm'].mean()
-            h_overpay = h_data['overpay_sat_vb'].mean()
-            print(f"  {horizon_label:10s}: {len(h_data):3d} validated | "
-                  f"Inclusion: {h_inclusion:.2%} | Overpay: {h_overpay:.1f} sat/vB")
 
     # Save current snapshot for collector
     ingestion.save_snapshot(snapshot)

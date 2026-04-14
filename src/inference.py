@@ -43,22 +43,11 @@ class FeeModelInference:
             return self.xgb_models[horizon]
 
         try:
-            prefix = self.config['model']['model_prefix']
-            latest_path = self.models_dir / f"{prefix}_{horizon}block_latest.json"
+            latest_path = self.models_dir / f"production/best_fee_{horizon}block.json"
 
             if not latest_path.exists():
-                # Find most recent model file
-                model_files = sorted(
-                    self.models_dir.glob(f"{prefix}_{horizon}block_*.json"),
-                    key=lambda x: x.stat().st_mtime,
-                    reverse=True
-                )
-                # Filter out metrics files
-                model_files = [f for f in model_files if '_metrics' not in f.name]
-                if not model_files:
-                    logger.error(f"No XGBoost model found for {horizon}-block")
-                    return None
-                latest_path = model_files[0]
+                logger.error(f"No XGBoost model found for {horizon}-block in production")
+                return None
 
             model = xgb.XGBRegressor()
             model.load_model(str(latest_path))
@@ -78,10 +67,10 @@ class FeeModelInference:
             return self.lgb_models[horizon]
 
         try:
-            latest_path = self.models_dir / f"lgbm_fee_{horizon}block_latest.txt"
+            latest_path = self.models_dir / f"production/best_fee_{horizon}block.txt"
 
             if not latest_path.exists():
-                logger.debug(f"No LightGBM model for {horizon}-block (optional)")
+                logger.debug(f"No LightGBM model for {horizon}-block in production")
                 return None
 
             model = lgb.Booster(model_file=str(latest_path))

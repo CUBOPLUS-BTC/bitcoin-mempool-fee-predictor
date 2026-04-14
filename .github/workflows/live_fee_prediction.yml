@@ -36,15 +36,15 @@ jobs:
       - name:  Verify models exist in repo
         run: |
           echo "Checking for committed models..."
-          if ls models/xgb_fee_*block_latest.json 1>/dev/null 2>&1; then
+          if ls models/production/best_fee_*.json 1>/dev/null 2>&1; then
             echo " XGBoost models found"
-            ls -la models/xgb_fee_*block_latest.json
+            ls -la models/production/best_fee_*.json
           else
             echo " No XGBoost models in repo yet — run auto_retrain first"
           fi
-          if ls models/lgbm_fee_*block_latest.txt 1>/dev/null 2>&1; then
+          if ls models/production/best_fee_*.txt 1>/dev/null 2>&1; then
             echo " LightGBM models found"
-            ls -la models/lgbm_fee_*block_latest.txt
+            ls -la models/production/best_fee_*.txt
           else
             echo " No LightGBM models in repo yet"
           fi
