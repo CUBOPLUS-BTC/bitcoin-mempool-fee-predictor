@@ -113,6 +113,11 @@ class FeeModelRetrainer:
         # 3. Prepare features
         df, feature_cols = self.prepare_features(df_raw)
 
+        if len(df) < 50:
+            logger.warning(f"⚠️ Not enough samples after feature engineering ({len(df)}). Retraining skipped to avoid model collapse.")
+            return {}
+
+
         # 4. Train XGBoost models
         logger.info("\n🧠 Training XGBoost Models...")
         xgb_trainer = FeeModelTrainer(config_path=self.config_path)

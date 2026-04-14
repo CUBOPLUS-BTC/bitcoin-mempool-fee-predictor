@@ -1,0 +1,64 @@
+{
+  "timestamp": "20260413_221343",
+  "horizons": {
+    "1block": {
+      "horizon_blocks": 1,
+      "mse": 70.77154068948971,
+      "rmse": 8.412582284262646,
+      "mae": 7.0114978994641985,
+      "r2": 0.004819636748839007,
+      "block_inclusion_accuracy": 0.7142857142857143,
+      "avg_overpay_sat_vb": 3.6403244359152658,
+      "median_overpay_sat_vb": 4.989780426025391,
+      "avg_underpay_sat_vb": 3.3711734635489328,
+      "overpay_mape": 305.20999976566856,
+      "within_10pct": 0.0,
+      "within_20pct": 0.05714285714285714,
+      "within_50pct": 0.15714285714285714,
+      "asymmetric_loss": 41.179009071655514,
+      "mape": 321.6065083735592
+    },
+    "3block": {
+      "horizon_blocks": 3,
+      "mse": 69.21565480099697,
+      "rmse": 8.319594629607682,
+      "mae": 6.912368338448661,
+      "r2": 0.0123106827199716,
+      "block_inclusion_accuracy": 0.7142857142857143,
+      "avg_overpay_sat_vb": 3.6598761762891496,
+      "median_overpay_sat_vb": 4.946914196014404,
+      "avg_underpay_sat_vb": 3.252492162159511,
+      "overpay_mape": 305.91563837868824,
+      "within_10pct": 0.014285714285714285,
+      "within_20pct": 0.04285714285714286,
+      "within_50pct": 0.2,
+      "asymmetric_loss": 39.97780267886172,
+      "mape": 321.7716219759249
+    },
+    "6block": {
+      "horizon_blocks": 6,
+      "mse": 75.54187722727673,
+      "rmse": 8.691483028072755,
+      "mae": 7.134081057139805,
+      "r2": -0.009081189926656963,
+      "block_inclusion_accuracy": 0.7,
+      "avg_overpay_sat_vb": 3.529669802529471,
+      "median_overpay_sat_vb": 4.992858409881592,
+      "avg_underpay_sat_vb": 3.604411254610334,
+      "overpay_mape": 289.6089115596953,
+      "within_10pct": 0.0,
+      "within_20pct": 0.05714285714285714,
+      "within_50pct": 0.15714285714285714,
+      "asymmetric_loss": 44.928982170361394,
+      "mape": 306.8672130876408
+    }
+  },
+  "overall_metrics": {
+    "avg_mae_sat_vb": 7.019315765017555,
+    "avg_rmse_sat_vb": 8.474553313981026,
+    "avg_block_inclusion_acc": 0.7095238095238096,
+    "avg_overpay_sat_vb": 3.6099568049112953,
+    "avg_within_20pct": 0.05238095238095238,
+    "avg_r2": 0.002683043180717881
+  }
+}

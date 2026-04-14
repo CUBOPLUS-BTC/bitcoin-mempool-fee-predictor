@@ -23,7 +23,6 @@ venv.bak/
 Thumbs.db
 
 # Data files (DO NOT commit large datasets)
-*.csv
 *.parquet
 *.h5
 *.hdf5
@@ -34,31 +33,41 @@ data/snapshots/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-# Prediction logs
-bitacora_*.csv
+# CSV — ignore by default EXCEPT specific tracked prediction files
+*.csv
+!models/*predictions*.csv
+!predictions/ensemble_predictions.csv
 
-# Model files (DO NOT commit trained models)
-models/*.json
+# Model files — ignore timestamped models but KEEP latest + predictions
 models/*.pkl
 models/*.joblib
 models/*.h5
 models/*.ckpt
-models/*.txt
 models/backup_*
 models/production/*
 models/experiments/*
 !models/.gitkeep
 !models/production/.gitkeep
 !models/experiments/.gitkeep
+# Allow latest model files and predictions to be committed
+!models/*_latest.json
+!models/*_latest.txt
+!models/*predictions*.csv
+!models/training_summary_*.json
+# Ignore all other timestamped model files
+models/xgb_fee_*_2*.json
+models/lgbm_fee_*_2*.txt
+models/*_metrics.json
 
 # Backtest results
 backtest_results/
 
-# Logs
+# Logs — ignore log files but KEEP retrain results
 logs/
 *.log
 *.jsonl
 !logs/.gitkeep
+!logs/retrain_results_*.json
 
 # Environment files
 .env

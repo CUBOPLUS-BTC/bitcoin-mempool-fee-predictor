@@ -22,7 +22,7 @@ from src.ingestion import MempoolDataIngestion
 from src.inference import FeeModelInference
 
 # Configuration
-LOG_FILE = 'bitacora_fee_predictions.csv'
+LOG_FILE = 'predictions/ensemble_predictions.csv'
 HORIZONS = {1: '1block', 3: '3blocks', 6: '6blocks'}
 
 
@@ -130,12 +130,23 @@ def run_live_prediction(single_run: bool = False):
     print(f"⏰ Timestamp: {datetime.now(timezone.utc).isoformat()}")
     print("=" * 80)
 
+    # Ensure predictions dir exists
+    Path(LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
+
     # Load/create bitacora
     log_df = load_or_create_bitacora()
 
     # Initialize services
     ingestion = MempoolDataIngestion()
     inference = FeeModelInference()
+
+    # Check if models exist at all
+    loaded = inference.load_all_models()
+    info = inference.get_loaded_models_info()
+    if info['total_models'] == 0:
+        print("⚠️  No trained models found. Run auto_retrain workflow first.")
+        print("   Exiting gracefully.")
+        return
 
     # Validate pending predictions
     log_df = validate_pending_predictions(log_df, ingestion)

@@ -257,11 +257,12 @@ class FeeModelTrainer:
             with open(metrics_path, 'w') as f:
                 json.dump(metrics, f, indent=2)
 
-            # Create symlink to latest model
-            latest_link = self.models_dir / f"{prefix}_{horizon}block_latest.json"
-            if latest_link.exists() or latest_link.is_symlink():
-                latest_link.unlink()
-            latest_link.symlink_to(model_filename)
+            # Copy as latest model (avoid symlinks — they break in git/GitHub Actions)
+            import shutil
+            latest_copy = self.models_dir / f"{prefix}_{horizon}block_latest.json"
+            if latest_copy.exists() or latest_copy.is_symlink():
+                latest_copy.unlink()
+            shutil.copy2(model_path, latest_copy)
 
             logger.info(f"✓ Model saved to {model_path}")
             logger.info(f"✓ Metrics saved to {metrics_path}")
@@ -307,6 +308,24 @@ class FeeModelTrainer:
 
         # Evaluate model
         metrics = self.evaluate_model(model, X_test, y_test, horizon)
+
+        # Output predictions vs actuals to CSV
+        y_pred = model.predict(X_test)
+        y_pred = np.maximum(y_pred, 1.0)
+        
+        test_df = df.iloc[-len(X_test):].copy()
+        preds_df = pd.DataFrame({
+            'actual_fee': y_test,
+            'predicted_fee': y_pred
+        })
+        if 'timestamp' in test_df.columns:
+            preds_df.insert(0, 'timestamp', test_df['timestamp'].values)
+        if 'block_height' in test_df.columns:
+            preds_df.insert(1, 'block_height', test_df['block_height'].values)
+            
+        preds_filename = f"xgb_predictions_{horizon}block.csv"
+        preds_df.to_csv(self.models_dir / preds_filename, index=False)
+        logger.info(f"✓ Saved predictions CSV to {preds_filename}")
 
         # Save model
         self.save_model(model, horizon, metrics)

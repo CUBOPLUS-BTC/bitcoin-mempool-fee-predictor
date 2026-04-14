@@ -11,6 +11,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   predict:
     runs-on: ubuntu-latest
@@ -30,19 +33,21 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: 📥 Download latest snapshots
-        uses: actions/download-artifact@v4
-        with:
-          name: mempool-snapshots
-          path: data/snapshots/
-        continue-on-error: true
-
-      - name: 📥 Download latest models
-        uses: actions/download-artifact@v4
-        with:
-          name: fee-models-latest
-          path: models/
-        continue-on-error: true
+      - name: 🔍 Verify models exist in repo
+        run: |
+          echo "Checking for committed models..."
+          if ls models/xgb_fee_*block_latest.json 1>/dev/null 2>&1; then
+            echo "✅ XGBoost models found"
+            ls -la models/xgb_fee_*block_latest.json
+          else
+            echo "⚠️ No XGBoost models in repo yet — run auto_retrain first"
+          fi
+          if ls models/lgbm_fee_*block_latest.txt 1>/dev/null 2>&1; then
+            echo "✅ LightGBM models found"
+            ls -la models/lgbm_fee_*block_latest.txt
+          else
+            echo "⚠️ No LightGBM models in repo yet"
+          fi
 
       - name: 📸 Collect current mempool snapshot
         run: |
@@ -64,21 +69,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "⚡ Auto-update: Fee predictions"
-          file_pattern: "bitacora_fee_predictions.csv"
-
-      - name: 📤 Upload prediction artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: fee-predictions-${{ github.run_number }}
-          path: bitacora_fee_predictions.csv
-          retention-days: 30
-
-      - name: 📤 Update snapshot archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: mempool-snapshots
-          path: |
-            data/snapshots/**/*.json
-            data/snapshots/*.parquet
-          retention-days: 90
-          overwrite: true
+          file_pattern: "predictions/ensemble_predictions.csv"

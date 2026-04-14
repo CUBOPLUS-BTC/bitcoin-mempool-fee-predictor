@@ -17,6 +17,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   retrain:
     runs-on: ubuntu-latest
@@ -36,13 +39,6 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: 📥 Download previous snapshots
-        uses: actions/download-artifact@v4
-        with:
-          name: mempool-snapshots
-          path: data/snapshots/
-        continue-on-error: true
-
       - name: 📸 Collect fresh mempool data
         run: |
           echo "🔄 Collecting mempool snapshots for retraining..."
@@ -50,16 +46,17 @@ jobs:
           echo "✅ Collection complete"
 
       - name: 📦 Consolidate snapshot data
+        continue-on-error: true
         run: |
           python -c "
           from src.ingestion import MempoolDataIngestion
           ingestion = MempoolDataIngestion()
           df = ingestion.load_all_snapshots_from_json()
-          if df is not None:
+          if df is not None and len(df) > 0:
               ingestion.save_snapshots_batch(df.to_dict('records'), 'mempool_consolidated.parquet')
               print(f'✅ Consolidated {len(df)} snapshots')
           else:
-              print('⚠️ No snapshots to consolidate')
+              print('⚠️ No snapshots to consolidate — skipping')
           "
 
       - name: 🔧 Feature Engineering
@@ -74,31 +71,13 @@ jobs:
           fi
           python scripts/retrain_fee_model.py $VALIDATE_FLAG
 
-      - name: 📤 Upload snapshot artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mempool-snapshots
-          path: |
-            data/snapshots/**/*.json
-            data/snapshots/*.parquet
-          retention-days: 90
-          overwrite: true
-
-      - name: 📤 Upload model artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: fee-models-${{ github.run_number }}
-          path: |
-            models/xgb_fee_*
-            models/lgbm_fee_*
-            models/training_summary_*
-            logs/retrain_results_*
-          retention-days: 30
-
-      - name: 💾 Commit training results
+      - name: 💾 Commit retrained models & predictions
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "🤖 Auto-retrain: Fee prediction models updated"
           file_pattern: |
-            logs/retrain_results_*.json
+            models/xgb_fee_*block_latest.json
+            models/lgbm_fee_*block_latest.txt
+            models/*predictions*.csv
             models/training_summary_*.json
+            logs/retrain_results_*.json
