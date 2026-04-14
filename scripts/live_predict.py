@@ -80,6 +80,9 @@ def validate_pending_predictions(df, ingestion):
 
     current_height = blocks[0].get('height', 0) if blocks else 0
     validated_count = 0
+    
+    # Cast column to object to avoid TypeError when assigning booleans to a float64 dtype column
+    df['would_confirm'] = df['would_confirm'].astype(object)
 
     for idx, row in pending.iterrows():
         pred_time = pd.to_datetime(row['timestamp_pred'])

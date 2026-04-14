@@ -1,4 +1,7 @@
 timestamp_pred,horizon_blocks,horizon_label,mempool_tx_count,mempool_vsize_mb,current_fastest_fee,current_halfhour_fee,current_hour_fee,predicted_fee_sat_vb,predicted_fee_exact,confidence_score,models_used,actual_fee,would_confirm,overpay_sat_vb,status
-2026-04-14T16:08:51.569795+00:00,1,1_block,42259,29.3,3,1,1,8,7.54,0.849,"xgb,lgb",,,,PENDING
-2026-04-14T16:08:51.569795+00:00,3,3_blocks,42259,29.3,3,1,1,7,6.87,0.997,"xgb,lgb",,,,PENDING
-2026-04-14T16:08:51.569795+00:00,6,6_blocks,42259,29.3,3,1,1,7,6.54,0.957,"xgb,lgb",,,,PENDING
+2026-04-14 16:08:51.569795+00:00,1,1_block,42259,29.3,3,1,1,8,7.54,0.849,"xgb,lgb",0.15217391304347827,True,7.8478260869565215,VALIDATED
+2026-04-14 16:08:51.569795+00:00,3,3_blocks,42259,29.3,3,1,1,7,6.87,0.997,"xgb,lgb",0.15217391304347827,True,6.8478260869565215,VALIDATED
+2026-04-14 16:08:51.569795+00:00,6,6_blocks,42259,29.3,3,1,1,7,6.54,0.957,"xgb,lgb",0.15217391304347827,True,6.8478260869565215,VALIDATED
+2026-04-14T17:54:40.807626+00:00,1,1_block,40794,32.2,1,1,1,1,1.0,1.0,"xgb,lgb",,,,PENDING
+2026-04-14T17:54:40.807626+00:00,3,3_blocks,40794,32.2,1,1,1,2,1.0,0.998,"xgb,lgb",,,,PENDING
+2026-04-14T17:54:40.807626+00:00,6,6_blocks,40794,32.2,1,1,1,2,1.07,0.835,"xgb,lgb",,,,PENDING
