@@ -41,16 +41,16 @@ async def lifespan(app: FastAPI):
     global ingestion, inference
 
     # Startup
-    logger.info("🚀 Starting Mempool Fee Prediction API...")
+    logger.info(" Starting Mempool Fee Prediction API...")
     ingestion = MempoolDataIngestion()
     inference = FeeModelInference()
     inference.load_all_models()
-    logger.info(f"✅ Models loaded: {inference.get_loaded_models_info()}")
+    logger.info(f" Models loaded: {inference.get_loaded_models_info()}")
 
     yield
 
     # Shutdown
-    logger.info("👋 Shutting down Fee Prediction API")
+    logger.info(" Shutting down Fee Prediction API")
 
 
 # Create FastAPI app

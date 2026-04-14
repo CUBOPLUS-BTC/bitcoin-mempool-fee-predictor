@@ -17,26 +17,26 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: 📥 Checkout repository
+      - name:  Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
+      - name:  Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: 📦 Install dependencies
+      - name:  Install dependencies
         run: |
           pip install -r requirements.txt
 
-      - name: 🔍 Lint check
+      - name:  Lint check
         run: |
           pip install flake8
           flake8 src/ --max-line-length 120 --ignore=E501,W503,E402 --count --show-source --statistics
         continue-on-error: true
 
-      - name: 📡 Test mempool.space API connection
+      - name:  Test mempool.space API connection
         run: |
           python -c "
           from src.ingestion import MempoolDataIngestion
@@ -46,22 +46,22 @@ jobs:
           fees = ingestion.fetch_recommended_fees()
           assert fees is not None, 'Failed to fetch fees'
           assert 'fastestFee' in fees, 'Missing fastestFee'
-          print(f'✅ Fees: fastest={fees[\"fastestFee\"]} sat/vB')
+          print(f' Fees: fastest={fees[\"fastestFee\"]} sat/vB')
 
           # Test mempool state
           mempool = ingestion.fetch_mempool_state()
           assert mempool is not None, 'Failed to fetch mempool'
           assert mempool.get('count', 0) > 0, 'Mempool empty'
-          print(f'✅ Mempool: {mempool[\"count\"]:,} txs')
+          print(f' Mempool: {mempool[\"count\"]:,} txs')
 
           # Test full snapshot
           snapshot = ingestion.fetch_full_snapshot()
           assert snapshot is not None, 'Failed to fetch snapshot'
           assert snapshot['fee_fastest'] > 0, 'Invalid fee'
-          print(f'✅ Full snapshot OK')
+          print(f' Full snapshot OK')
           "
 
-      - name: 🔧 Test feature engineering
+      - name:  Test feature engineering
         run: |
           python -c "
           import time, pandas as pd
@@ -83,10 +83,10 @@ jobs:
           feature_cols = engineer.get_feature_columns(df_features)
 
           assert len(feature_cols) > 50, f'Only {len(feature_cols)} features (expected >50)'
-          print(f'✅ Feature engineering: {len(feature_cols)} features from {len(df_features)} rows')
+          print(f' Feature engineering: {len(feature_cols)} features from {len(df_features)} rows')
           "
 
-      - name: 🧠 Test model training (synthetic data)
+      - name:  Test model training (synthetic data)
         run: |
           python -c "
           import numpy as np, pandas as pd, time
@@ -139,16 +139,16 @@ jobs:
           xgb_model, xgb_metrics = xgb_trainer.train_single_horizon(df_final, feature_cols, 1)
           assert xgb_metrics['mae'] > 0, 'XGBoost MAE should be positive'
           assert xgb_metrics['block_inclusion_accuracy'] >= 0, 'Inclusion must be >= 0'
-          print(f'✅ XGBoost 1-block: MAE={xgb_metrics[\"mae\"]:.2f}, Inclusion={xgb_metrics[\"block_inclusion_accuracy\"]:.2%}')
+          print(f' XGBoost 1-block: MAE={xgb_metrics[\"mae\"]:.2f}, Inclusion={xgb_metrics[\"block_inclusion_accuracy\"]:.2%}')
 
           # Train LightGBM for 1-block
           lgb_trainer = LightGBMFeeTrainer()
           lgb_model, lgb_metrics = lgb_trainer.train_single_horizon(df_final, feature_cols, 1)
           assert lgb_metrics['mae'] > 0, 'LightGBM MAE should be positive'
-          print(f'✅ LightGBM 1-block: MAE={lgb_metrics[\"mae\"]:.2f}, Inclusion={lgb_metrics[\"block_inclusion_accuracy\"]:.2%}')
+          print(f' LightGBM 1-block: MAE={lgb_metrics[\"mae\"]:.2f}, Inclusion={lgb_metrics[\"block_inclusion_accuracy\"]:.2%}')
           "
 
-      - name: ⚡ Test inference pipeline
+      - name:  Test inference pipeline
         continue-on-error: true
         run: |
           python -c "
@@ -159,15 +159,15 @@ jobs:
           info = inference.get_loaded_models_info()
 
           if info['total_models'] > 0:
-              print(f'✅ Loaded {info[\"total_models\"]} models')
+              print(f' Loaded {info[\"total_models\"]} models')
               print(f'   XGB: {info[\"xgb_models\"]}')
               print(f'   LGB: {info[\"lgb_models\"]}')
           else:
-              print('⚠️ No pre-trained models found in repo (expected on first CI run)')
+              print(' No pre-trained models found in repo (expected on first CI run)')
               print('   Models will be available after first auto_retrain run')
           "
 
-      - name: 🌐 Test API startup
+      - name:  Test API startup
         continue-on-error: true
         run: |
           cd api
@@ -185,18 +185,18 @@ jobs:
                   assert r.status_code == 200
                   data = r.json()
                   assert data['version'] == '2.0.0'
-                  print(f'✅ API root: {data[\"service\"]}')
+                  print(f' API root: {data[\"service\"]}')
 
                   # Test health
                   r = await client.get('/health')
                   assert r.status_code == 200
-                  print(f'✅ Health: {r.json()[\"status\"]}')
+                  print(f' Health: {r.json()[\"status\"]}')
 
           asyncio.run(test())
           " || true
 
-      - name: ✅ Summary
+      - name:  Summary
         run: |
           echo "========================================"
-          echo "✅ All CI tests passed!"
+          echo " All CI tests passed!"
           echo "========================================"

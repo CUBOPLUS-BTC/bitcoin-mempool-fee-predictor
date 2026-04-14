@@ -31,7 +31,7 @@ def load_or_create_bitacora():
     if os.path.exists(LOG_FILE):
         df = pd.read_csv(LOG_FILE)
         df['timestamp_pred'] = pd.to_datetime(df['timestamp_pred'])
-        print(f"✅ Loaded {len(df)} existing predictions")
+        print(f" Loaded {len(df)} existing predictions")
         return df
     else:
         df = pd.DataFrame(columns=[
@@ -52,7 +52,7 @@ def load_or_create_bitacora():
             'overpay_sat_vb',
             'status'
         ])
-        print("✅ Created new fee prediction bitacora")
+        print(" Created new fee prediction bitacora")
         return df
 
 
@@ -67,15 +67,15 @@ def validate_pending_predictions(df, ingestion):
 
     pending = df[df['status'] == 'PENDING'].copy()
     if pending.empty:
-        print("ℹ️  No pending predictions to validate")
+        print("  No pending predictions to validate")
         return df
 
-    print(f"\n🔍 Validating {len(pending)} pending predictions...")
+    print(f"\n Validating {len(pending)} pending predictions...")
 
     # Fetch current block data
     blocks = ingestion.fetch_recent_blocks(count=15)
     if not blocks:
-        print("⚠️  Could not fetch blocks for validation")
+        print("  Could not fetch blocks for validation")
         return df
 
     current_height = blocks[0].get('height', 0) if blocks else 0
@@ -126,7 +126,7 @@ def validate_pending_predictions(df, ingestion):
                 validated_count += 1
 
     if validated_count > 0:
-        print(f"✅ Validated {validated_count} predictions")
+        print(f" Validated {validated_count} predictions")
 
     return df
 
@@ -134,8 +134,8 @@ def validate_pending_predictions(df, ingestion):
 def run_live_prediction(single_run: bool = False):
     """Main prediction function"""
     print("=" * 80)
-    print("⚡ LIVE FEE PREDICTION — MEMPOOL MONITOR")
-    print(f"⏰ Timestamp: {datetime.now(timezone.utc).isoformat()}")
+    print(" LIVE FEE PREDICTION — MEMPOOL MONITOR")
+    print(f" Timestamp: {datetime.now(timezone.utc).isoformat()}")
     print("=" * 80)
 
     # Ensure predictions dir exists
@@ -152,7 +152,7 @@ def run_live_prediction(single_run: bool = False):
     loaded = inference.load_all_models()
     info = inference.get_loaded_models_info()
     if info['total_models'] == 0:
-        print("⚠️  No trained models found. Run auto_retrain workflow first.")
+        print("  No trained models found. Run auto_retrain workflow first.")
         print("   Exiting gracefully.")
         return
 
@@ -160,17 +160,17 @@ def run_live_prediction(single_run: bool = False):
     log_df = validate_pending_predictions(log_df, ingestion)
 
     # Fetch live mempool data
-    print("\n📥 Fetching mempool state...")
+    print("\n Fetching mempool state...")
     snapshot = ingestion.fetch_full_snapshot()
     if snapshot is None:
-        print("❌ Error: Could not fetch mempool data")
+        print(" Error: Could not fetch mempool data")
         return
 
     # Load historical snapshots for feature engineering
     snapshots_df = ingestion.load_snapshots()
 
     if snapshots_df is None or len(snapshots_df) < 5:
-        print("⚠️  Not enough historical data — collecting quick snapshots...")
+        print("  Not enough historical data — collecting quick snapshots...")
         import time
         rows = []
         for i in range(5):
@@ -185,18 +185,18 @@ def run_live_prediction(single_run: bool = False):
         # Append current snapshot
         snapshots_df = pd.concat([snapshots_df, pd.DataFrame([snapshot])], ignore_index=True)
 
-    print(f"✅ Mempool: {snapshot.get('mempool_tx_count', 0):,} txs, "
+    print(f" Mempool: {snapshot.get('mempool_tx_count', 0):,} txs, "
           f"{snapshot.get('mempool_vsize', 0) / 1e6:.1f} MvB")
     print(f"   Current fees: fastest={snapshot.get('fee_fastest', '?')}, "
           f"halfhour={snapshot.get('fee_half_hour', '?')}, "
           f"hour={snapshot.get('fee_hour', '?')} sat/vB")
 
     # Make predictions
-    print("\n🤖 Making fee predictions...")
+    print("\n Making fee predictions...")
     try:
         response = inference.predict_from_snapshot(snapshots_df)
     except Exception as e:
-        print(f"❌ Prediction error: {e}")
+        print(f" Prediction error: {e}")
         import traceback
         traceback.print_exc()
         return
@@ -227,26 +227,26 @@ def run_live_prediction(single_run: bool = False):
         new_predictions.append(prediction)
 
         ci = pred['confidence_interval']
-        print(f"  ✅ {label:10s}: {pred['predicted_fee_sat_vb']:3d} sat/vB "
+        print(f"   {label:10s}: {pred['predicted_fee_sat_vb']:3d} sat/vB "
               f"[{ci[0]}-{ci[1]}] ({pred['priority']}) "
               f"conf={pred['confidence_score']:.2f}")
 
     # Recommendation
-    print(f"\n📋 Recommendation: {response.get('recommendation', 'N/A')}")
+    print(f"\n Recommendation: {response.get('recommendation', 'N/A')}")
 
     # Append new predictions
     if new_predictions:
         new_df = pd.DataFrame(new_predictions)
         log_df = pd.concat([log_df, new_df], ignore_index=True)
-        print(f"\n✅ Added {len(new_predictions)} new predictions")
+        print(f"\n Added {len(new_predictions)} new predictions")
 
     # Save bitacora
     log_df.to_csv(LOG_FILE, index=False)
-    print(f"💾 Saved to: {LOG_FILE}")
+    print(f" Saved to: {LOG_FILE}")
 
     # Show statistics
     print("\n" + "=" * 80)
-    print("📊 STATISTICS")
+    print(" STATISTICS")
     print("=" * 80)
 
     total = len(log_df)
@@ -274,7 +274,7 @@ def run_live_prediction(single_run: bool = False):
     # Save current snapshot for collector
     ingestion.save_snapshot(snapshot)
 
-    print("\n✅ Prediction cycle completed!")
+    print("\n Prediction cycle completed!")
     print("=" * 80)
 
 

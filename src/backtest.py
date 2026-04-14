@@ -224,28 +224,28 @@ class FeeBacktester:
         horizon = results.get('horizon_blocks', '?')
 
         print(f"\n{'=' * 80}")
-        print(f"⚡ FEE PREDICTION BACKTEST — {horizon}-BLOCK HORIZON")
+        print(f" FEE PREDICTION BACKTEST — {horizon}-BLOCK HORIZON")
         print(f"{'=' * 80}")
 
-        print(f"\n🎯 INCLUSION METRICS:")
+        print(f"\n INCLUSION METRICS:")
         print(f"  Block Inclusion Accuracy: {m['block_inclusion_accuracy']:.2%}")
         print(f"  Stuck Rate: {m['stuck_rate']:.2%}")
         print(f"  Severely Stuck (>10 sat/vB short): {m['severely_stuck_rate']:.2%}")
 
-        print(f"\n📊 ERROR METRICS:")
+        print(f"\n ERROR METRICS:")
         print(f"  MAE: {m['mae']:.2f} sats/vB")
         print(f"  RMSE: {m['rmse']:.2f} sats/vB")
         print(f"  MAPE: {m['mape']:.1f}%")
         print(f"  Median Abs Error: {m['median_abs_error']:.2f} sats/vB")
 
-        print(f"\n💰 COST ANALYSIS:")
+        print(f"\n COST ANALYSIS:")
         print(f"  Avg Overpay: {m['avg_overpay_sat_vb']:.2f} sats/vB")
         print(f"  Avg Underpay: {m['avg_underpay_sat_vb']:.2f} sats/vB")
         print(f"  Max Underpay: {m['max_underpay_sat_vb']:.2f} sats/vB")
         if 'avg_savings_pct' in m:
             print(f"  Savings vs Always-Fastest: {m['avg_savings_pct']:.1f}%")
 
-        print(f"\n📏 TOLERANCE BANDS:")
+        print(f"\n TOLERANCE BANDS:")
         print(f"  Within 1 sat/vB: {m['within_1_sat']:.2%}")
         print(f"  Within 5 sat/vB: {m['within_5_sat']:.2%}")
         print(f"  Within 20%: {m['within_20pct']:.2%}")
@@ -253,7 +253,7 @@ class FeeBacktester:
         # Regime analysis
         ra = results.get('regime_analysis', {})
         if ra:
-            print(f"\n🌡️ BY CONGESTION REGIME:")
+            print(f"\n BY CONGESTION REGIME:")
             for regime, stats in ra.items():
                 print(f"  {regime:10s}: Inclusion={stats['inclusion_accuracy']:.2%} "
                       f"({stats['sample_count']} samples, avg overpay={stats['avg_overpay']:.1f})")

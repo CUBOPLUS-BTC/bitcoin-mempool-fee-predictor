@@ -134,7 +134,7 @@ class CollectorDaemon:
 
     def _handle_shutdown(self, signum, frame):
         """Graceful shutdown handler"""
-        logger.info("⏹ Shutdown signal received. Finishing current snapshot...")
+        logger.info(" Shutdown signal received. Finishing current snapshot...")
         self.running = False
 
     def collect_single(self) -> bool:
@@ -160,7 +160,7 @@ class CollectorDaemon:
 
             # Log summary
             logger.info(
-                f"📸 #{self.snapshot_count} | "
+                f" #{self.snapshot_count} | "
                 f"fees=[{snapshot.get('fee_fastest', '?')}/{snapshot.get('fee_half_hour', '?')}/{snapshot.get('fee_hour', '?')}] | "
                 f"mempool={snapshot.get('mempool_tx_count', 0):,} txs | "
                 f"vsize={snapshot.get('mempool_vsize', 0) / 1e6:.1f} MvB"
@@ -185,7 +185,7 @@ class CollectorDaemon:
         interval = interval or self.config['data']['polling_interval_seconds']
 
         logger.info("=" * 80)
-        logger.info("🚀 MEMPOOL COLLECTOR DAEMON STARTED")
+        logger.info(" MEMPOOL COLLECTOR DAEMON STARTED")
         logger.info(f"   Interval: {interval}s")
         logger.info(f"   Snapshots dir: {self.ingestion.snapshots_dir}")
         logger.info(f"   Bitcoin Core RPC: {'✓ Enabled' if self.rpc_client else '✗ Disabled'}")
@@ -208,14 +208,14 @@ class CollectorDaemon:
 
         # Summary
         logger.info("=" * 80)
-        logger.info("📊 COLLECTOR SUMMARY")
+        logger.info(" COLLECTOR SUMMARY")
         logger.info(f"   Snapshots collected: {self.snapshot_count}")
         logger.info(f"   Errors: {self.error_count}")
         logger.info("=" * 80)
 
     def consolidate_to_parquet(self):
         """Merge all JSON snapshots into a single Parquet file"""
-        logger.info("📦 Consolidating JSON snapshots to Parquet...")
+        logger.info(" Consolidating JSON snapshots to Parquet...")
 
         df = self.ingestion.load_all_snapshots_from_json()
         if df is not None and len(df) > 0:

@@ -355,29 +355,29 @@ def main():
         response = inference.predict_from_snapshot(df)
 
         print("\n" + "=" * 80)
-        print("⚡ BITCOIN MEMPOOL FEE PREDICTIONS")
+        print(" BITCOIN MEMPOOL FEE PREDICTIONS")
         print("=" * 80)
 
         ms = response['mempool_snapshot']
-        print(f"\n📊 Mempool State:")
+        print(f"\n Mempool State:")
         print(f"  Transactions: {ms['tx_count']:,}")
         print(f"  Size: {ms['vsize_mb']:.1f} MvB")
         print(f"  Blocks/hour: {ms['blocks_last_hour']}")
 
         cf = response['current_fees']
-        print(f"\n💰 Current Fees (mempool.space):")
+        print(f"\n Current Fees (mempool.space):")
         print(f"  Fastest: {cf['fastest']} sat/vB")
         print(f"  Half-hour: {cf['half_hour']} sat/vB")
         print(f"  Hour: {cf['hour']} sat/vB")
         print(f"  Economy: {cf['economy']} sat/vB")
 
-        print(f"\n🔮 ML Predictions:")
+        print(f"\n ML Predictions:")
         for label, pred in response['fee_predictions'].items():
             print(f"  {label}: {pred['predicted_fee_sat_vb']} sat/vB "
                   f"[{pred['confidence_interval'][0]}-{pred['confidence_interval'][1]}] "
                   f"({pred['priority']})")
 
-        print(f"\n📋 Recommendation: {response['recommendation']}")
+        print(f"\n Recommendation: {response['recommendation']}")
         print("=" * 80)
 
     else:

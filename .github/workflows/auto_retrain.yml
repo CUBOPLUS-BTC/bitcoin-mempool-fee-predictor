@@ -26,26 +26,26 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: 📥 Checkout repository
+      - name:  Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
+      - name:  Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: 📦 Install dependencies
+      - name:  Install dependencies
         run: |
           pip install -r requirements.txt
 
-      - name: 📸 Collect mempool data (40 snapshots, ~5 min)
+      - name:  Collect mempool data (40 snapshots, ~5 min)
         run: |
-          echo "🔄 Collecting mempool snapshots for retraining..."
+          echo " Collecting mempool snapshots for retraining..."
           python scripts/collector_daemon.py --interval 8 --test-run
-          echo "✅ Collection complete"
+          echo " Collection complete"
 
-      - name: 📦 Consolidate snapshot data
+      - name:  Consolidate snapshot data
         continue-on-error: true
         run: |
           python -c "
@@ -54,12 +54,12 @@ jobs:
           df = ingestion.load_all_snapshots_from_json()
           if df is not None and len(df) > 0:
               ingestion.save_snapshots_batch(df.to_dict('records'), 'mempool_consolidated.parquet')
-              print(f'✅ Consolidated {len(df)} snapshots')
+              print(f' Consolidated {len(df)} snapshots')
           else:
-              print('⚠️ No snapshots to consolidate — skipping')
+              print(' No snapshots to consolidate — skipping')
           "
 
-      - name: 🔄 Retrain models (feature eng + training)
+      - name:  Retrain models (feature eng + training)
         run: |
           VALIDATE_FLAG=""
           if [ "${{ inputs.skip_validation }}" = "true" ]; then
@@ -67,14 +67,14 @@ jobs:
           fi
           python scripts/retrain_fee_model.py $VALIDATE_FLAG
 
-      - name: 🔃 Sync with remote (prevent push conflicts)
+      - name:  Sync with remote (prevent push conflicts)
         run: |
           git pull --rebase origin main || true
 
-      - name: 💾 Commit retrained models & predictions
+      - name:  Commit retrained models & predictions
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🤖 Auto-retrain: Fee prediction models updated"
+          commit_message: " Auto-retrain: Fee prediction models updated"
           push_options: "--no-verify"
           file_pattern: |
             models/xgb_fee_*block_latest.json

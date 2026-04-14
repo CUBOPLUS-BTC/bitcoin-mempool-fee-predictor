@@ -5,21 +5,21 @@
 ![LightGBM](https://img.shields.io/badge/LightGBM-4.0-green)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen)
 
-## ⚡ Overview
+##  Overview
 
 **ML-powered Bitcoin mempool fee prediction system** that predicts the optimal fee rate (sats/vByte) needed to get your transaction confirmed in the next **1, 3, or 6 blocks**.
 
 This framework replaces traditional static fee estimation with machine learning models (XGBoost + LightGBM ensemble) trained on real-time mempool congestion data, block timing patterns, and network state metrics.
 
 **Core Capabilities:**
-- 🎯 **Block Inclusion Prediction**: Fee rates for next 1, 3, or 6 blocks
-- 📊 **Mempool Congestion Analysis**: Real-time queue depth and pressure metrics
-- 🤖 **Dual Model Ensemble**: XGBoost + LightGBM with conservative bias
-- 💰 **Cost Optimization**: Save vs always paying the highest fee
-- 🔄 **Auto-Retraining**: Hourly model updates with validation
-- 📡 **Live API**: FastAPI on port 1234
+-  **Block Inclusion Prediction**: Fee rates for next 1, 3, or 6 blocks
+-  **Mempool Congestion Analysis**: Real-time queue depth and pressure metrics
+-  **Dual Model Ensemble**: XGBoost + LightGBM with conservative bias
+-  **Cost Optimization**: Save vs always paying the highest fee
+-  **Auto-Retraining**: Hourly model updates with validation
+-  **Live API**: FastAPI on port 1234
 
-## 🛠 Tech Stack
+##  Tech Stack
 
 - **Core:** Python 3.9+
 - **ML/AI:** XGBoost, LightGBM, Scikit-learn
@@ -27,7 +27,7 @@ This framework replaces traditional static fee estimation with machine learning 
 - **API:** FastAPI (model serving on port 1234)
 - **Data Sources:** Mempool.space API + Bitcoin Core RPC
 
-## 🏗 Architecture
+##  Architecture
 
 ```
 Mempool.space API ─┐
@@ -50,7 +50,7 @@ Bitcoin Core RPC ──┘      (every 2 min)     (congestion metrics)   (XGBoos
 | **Collector Daemon** | `scripts/collector_daemon.py` | 24/7 mempool data collection |
 | **Auto Retrain** | `scripts/auto_retrain.py` | Hourly model retraining pipeline |
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### 1. Install Dependencies
 
@@ -79,7 +79,7 @@ python scripts/collector_daemon.py --test-run
 python scripts/collector_daemon.py
 ```
 
-> ⚠️ **Important:** You need ~30 days of data (~21,600 snapshots) for robust model training. Minimum viable: 7 days (~5,040 snapshots).
+>  **Important:** You need ~30 days of data (~21,600 snapshots) for robust model training. Minimum viable: 7 days (~5,040 snapshots).
 
 ### 4. Feature Engineering
 
@@ -112,7 +112,7 @@ Access the API documentation at: `http://localhost:1234/docs`
 python scripts/live_predict.py --once
 ```
 
-## 📡 API Endpoints
+##  API Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -155,7 +155,7 @@ python scripts/live_predict.py --once
 }
 ```
 
-## 📈 Model Evaluation Metrics
+##  Model Evaluation Metrics
 
 Models are evaluated with fee-prediction-specific metrics:
 
@@ -167,7 +167,7 @@ Models are evaluated with fee-prediction-specific metrics:
 | **Stuck Rate** | % of predictions that would fail to confirm | <10% |
 | **Savings vs Naive** | Cost savings vs always paying fastest fee | >15% |
 
-## 🔄 Automation
+##  Automation
 
 ### Collector Daemon (24/7)
 ```bash
@@ -182,7 +182,7 @@ python scripts/collector_daemon.py
 python scripts/auto_retrain.py
 ```
 
-## 🏗 Data Sources
+##  Data Sources
 
 ### Primary: Mempool.space API
 - **Recommended fees**: `GET /api/v1/fees/recommended`
@@ -196,13 +196,13 @@ python scripts/auto_retrain.py
 - **estimatesmartfee**: Node's fee estimation for comparison
 - **getblockchaininfo**: Chain state
 
-## 👤 Author
+##  Author
 
 **Marcelo Guerra**
 CUBO+ Developer & ESEN Student
 El Salvador Bitcoin Community
 
-## 📄 License
+##  License
 
 This project is open-source and intended for educational and research purposes within the Bitcoin ecosystem.
 

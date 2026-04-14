@@ -20,58 +20,58 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: 📥 Checkout repository
+      - name:  Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
+      - name:  Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: 📦 Install dependencies
+      - name:  Install dependencies
         run: |
           pip install -r requirements.txt
 
-      - name: 🔍 Verify models exist in repo
+      - name:  Verify models exist in repo
         run: |
           echo "Checking for committed models..."
           if ls models/xgb_fee_*block_latest.json 1>/dev/null 2>&1; then
-            echo "✅ XGBoost models found"
+            echo " XGBoost models found"
             ls -la models/xgb_fee_*block_latest.json
           else
-            echo "⚠️ No XGBoost models in repo yet — run auto_retrain first"
+            echo " No XGBoost models in repo yet — run auto_retrain first"
           fi
           if ls models/lgbm_fee_*block_latest.txt 1>/dev/null 2>&1; then
-            echo "✅ LightGBM models found"
+            echo " LightGBM models found"
             ls -la models/lgbm_fee_*block_latest.txt
           else
-            echo "⚠️ No LightGBM models in repo yet"
+            echo " No LightGBM models in repo yet"
           fi
 
-      - name: 📸 Collect current mempool snapshot
+      - name:  Collect current mempool snapshot
         run: |
           python -c "
           from src.ingestion import MempoolDataIngestion
           ingestion = MempoolDataIngestion()
           path = ingestion.fetch_and_save()
           if path:
-              print(f'✅ Snapshot saved: {path}')
+              print(f' Snapshot saved: {path}')
           else:
-              print('⚠️ Snapshot collection failed')
+              print(' Snapshot collection failed')
           "
 
-      - name: ⚡ Run live fee prediction
+      - name:  Run live fee prediction
         run: |
           python scripts/live_predict.py --once
 
-      - name: 🔃 Sync with remote
+      - name:  Sync with remote
         run: |
           git pull --rebase origin main || true
 
-      - name: 💾 Commit predictions
+      - name:  Commit predictions
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "⚡ Auto-update: Fee predictions"
+          commit_message: " Auto-update: Fee predictions"
           push_options: "--no-verify"
           file_pattern: "predictions/ensemble_predictions.csv"

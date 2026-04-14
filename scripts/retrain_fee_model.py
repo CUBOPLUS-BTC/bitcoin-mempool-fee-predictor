@@ -47,7 +47,7 @@ class FeeModelRetrainer:
 
     def backup_current_models(self):
         """Backup current models before retraining"""
-        logger.info("📦 Backing up current models...")
+        logger.info(" Backing up current models...")
         backup_dir = self.models_dir / f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         backup_dir.mkdir(exist_ok=True)
 
@@ -62,7 +62,7 @@ class FeeModelRetrainer:
 
     def load_training_data(self):
         """Load and prepare training data from collected snapshots"""
-        logger.info("📊 Loading mempool snapshot data...")
+        logger.info(" Loading mempool snapshot data...")
 
         ingestion = MempoolDataIngestion(config_path=self.config_path)
 
@@ -85,7 +85,7 @@ class FeeModelRetrainer:
 
     def prepare_features(self, df):
         """Generate features and targets"""
-        logger.info("🔧 Generating features...")
+        logger.info(" Generating features...")
 
         engineer = FeatureEngineer(config_path=self.config_path)
         df_features = engineer.create_all_features(df)
@@ -99,7 +99,7 @@ class FeeModelRetrainer:
     def retrain_all(self, validate: bool = True):
         """Main retraining pipeline"""
         logger.info("=" * 80)
-        logger.info("🔄 Starting Fee Model Retraining Pipeline")
+        logger.info(" Starting Fee Model Retraining Pipeline")
         logger.info("=" * 80)
 
         start_time = datetime.now()
@@ -114,12 +114,12 @@ class FeeModelRetrainer:
         df, feature_cols = self.prepare_features(df_raw)
 
         if len(df) < 5:
-            logger.warning(f"⚠️ Not enough samples after feature engineering ({len(df)}). Retraining skipped.")
+            logger.warning(f" Not enough samples after feature engineering ({len(df)}). Retraining skipped.")
             return {}
 
 
         # 4. Train XGBoost models
-        logger.info("\n🧠 Training XGBoost Models...")
+        logger.info("\n Training XGBoost Models...")
         xgb_trainer = FeeModelTrainer(config_path=self.config_path)
         xgb_results = {}
 
@@ -127,13 +127,13 @@ class FeeModelRetrainer:
             try:
                 model, metrics = xgb_trainer.train_single_horizon(df, feature_cols, horizon)
                 xgb_results[horizon] = metrics
-                logger.info(f"   ✅ XGB {horizon}-block: MAE={metrics['mae']:.2f}, "
+                logger.info(f"    XGB {horizon}-block: MAE={metrics['mae']:.2f}, "
                              f"Inclusion={metrics['block_inclusion_accuracy']:.2%}")
             except Exception as e:
-                logger.error(f"   ❌ XGB {horizon}-block failed: {e}")
+                logger.error(f"    XGB {horizon}-block failed: {e}")
 
         # 5. Train LightGBM models
-        logger.info("\n🧠 Training LightGBM Models...")
+        logger.info("\n Training LightGBM Models...")
         lgb_trainer = LightGBMFeeTrainer(config_path=self.config_path)
         lgb_results = {}
 
@@ -141,10 +141,10 @@ class FeeModelRetrainer:
             try:
                 model, metrics = lgb_trainer.train_single_horizon(df, feature_cols, horizon)
                 lgb_results[horizon] = metrics
-                logger.info(f"   ✅ LGB {horizon}-block: MAE={metrics['mae']:.2f}, "
+                logger.info(f"    LGB {horizon}-block: MAE={metrics['mae']:.2f}, "
                              f"Inclusion={metrics['block_inclusion_accuracy']:.2%}")
             except Exception as e:
-                logger.error(f"   ❌ LGB {horizon}-block failed: {e}")
+                logger.error(f"    LGB {horizon}-block failed: {e}")
 
         # 6. Validate if requested
         if validate:
@@ -154,8 +154,8 @@ class FeeModelRetrainer:
         duration = (datetime.now() - start_time).total_seconds()
 
         logger.info("=" * 80)
-        logger.info("✅ Retraining Complete!")
-        logger.info(f"⏱️  Duration: {duration:.1f}s")
+        logger.info(" Retraining Complete!")
+        logger.info(f"  Duration: {duration:.1f}s")
         logger.info("=" * 80)
 
         # Save results
@@ -174,14 +174,14 @@ class FeeModelRetrainer:
 
     def _validate_and_rollback(self, xgb_results, lgb_results, backup_dir):
         """Validate new models and rollback if worse"""
-        logger.info("\n🔍 Validating new models...")
+        logger.info("\n Validating new models...")
 
         for horizon in self.horizons:
             # Check XGBoost
             if horizon in xgb_results:
                 inclusion = xgb_results[horizon].get('block_inclusion_accuracy', 0)
                 if inclusion < 0.7:  # Minimum 70% inclusion
-                    logger.warning(f"⚠️  XGB {horizon}-block inclusion too low ({inclusion:.2%}). Rolling back.")
+                    logger.warning(f"  XGB {horizon}-block inclusion too low ({inclusion:.2%}). Rolling back.")
                     backup_file = backup_dir / f"xgb_fee_{horizon}block_latest.json"
                     target_file = self.models_dir / f"xgb_fee_{horizon}block_latest.json"
                     if backup_file.exists():
@@ -196,14 +196,14 @@ def main():
     parser.add_argument('--config', type=str, default='config/config.yaml')
     args = parser.parse_args()
 
-    print("\n🚀 FEE MODEL RETRAINING\n")
+    print("\n FEE MODEL RETRAINING\n")
 
     try:
         retrainer = FeeModelRetrainer(config_path=args.config)
         results = retrainer.retrain_all(validate=not args.no_validate)
 
         print("\n" + "=" * 80)
-        print("📊 RETRAINING SUMMARY")
+        print(" RETRAINING SUMMARY")
         print("=" * 80)
 
         for model_type in ['xgb_results', 'lgb_results']:
@@ -214,10 +214,10 @@ def main():
                       f"Inclusion={metrics['block_inclusion_accuracy']:.2%}, "
                       f"Overpay={metrics['avg_overpay_sat_vb']:.1f}")
 
-        print("\n✅ Done!")
+        print("\n Done!")
 
     except Exception as e:
-        logger.error(f"❌ Retraining failed: {e}")
+        logger.error(f" Retraining failed: {e}")
         raise
 
 

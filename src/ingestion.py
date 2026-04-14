@@ -565,7 +565,7 @@ def main():
 
     if args.continuous:
         interval = args.interval or ingestion.config['data']['polling_interval_seconds']
-        print(f"🔄 Starting continuous collection (every {interval}s)")
+        print(f" Starting continuous collection (every {interval}s)")
         print("Press Ctrl+C to stop")
 
         try:
@@ -577,7 +577,7 @@ def main():
                     print(f"  ✗ Failed to fetch snapshot")
                 time.sleep(interval)
         except KeyboardInterrupt:
-            print("\n⏹ Collection stopped")
+            print("\n Collection stopped")
             return 0
     else:
         # Single fetch
