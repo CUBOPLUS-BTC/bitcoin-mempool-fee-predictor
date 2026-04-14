@@ -11,7 +11,7 @@ on:
       skip_validation:
         description: 'Skip model validation (use with caution)'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 permissions:
