@@ -67,10 +67,15 @@ jobs:
           fi
           python scripts/retrain_fee_model.py $VALIDATE_FLAG
 
+      - name: 🔃 Sync with remote (prevent push conflicts)
+        run: |
+          git pull --rebase origin main || true
+
       - name: 💾 Commit retrained models & predictions
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "🤖 Auto-retrain: Fee prediction models updated"
+          push_options: "--no-verify"
           file_pattern: |
             models/xgb_fee_*block_latest.json
             models/lgbm_fee_*block_latest.txt

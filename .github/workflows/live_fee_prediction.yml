@@ -65,8 +65,13 @@ jobs:
         run: |
           python scripts/live_predict.py --once
 
+      - name: 🔃 Sync with remote
+        run: |
+          git pull --rebase origin main || true
+
       - name: 💾 Commit predictions
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "⚡ Auto-update: Fee predictions"
+          push_options: "--no-verify"
           file_pattern: "predictions/ensemble_predictions.csv"
