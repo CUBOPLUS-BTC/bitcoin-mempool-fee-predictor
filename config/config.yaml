@@ -1,79 +1,102 @@
-# BTC MLOps Configuration File
+# Bitcoin Mempool Fee Prediction Configuration
+# Predicts required fees (sats/vByte) for block inclusion
 
 # Data Ingestion Settings
 data:
-  exchange: "kraken"    # Using Kraken with limit parameter (like working project)
-  symbol: "BTC/USD"     # Kraken uses USD
-  base_timeframe: "30m"  # Base timeframe for data fetching
-  lookback_days: 60      # Days of historical data to fetch
+  # Mempool.space API (primary data source)
+  mempool_api_base: "https://mempool.space/api"
+  polling_interval_seconds: 120  # 2 min snapshot interval
+  lookback_snapshots: 21600      # ~30 days @ 2min intervals
+
+  # Bitcoin Core RPC (complementary, higher quality)
+  bitcoin_rpc_enabled: true
+  bitcoin_rpc_host: "127.0.0.1"
+  bitcoin_rpc_port: 8332
+  bitcoin_rpc_user: "bitcoinrpc"
+  bitcoin_rpc_password: ""  # Set via BITCOIN_RPC_PASSWORD env var
 
   # Directories
   raw_dir: "data/raw"
   processed_dir: "data/processed"
+  snapshots_dir: "data/snapshots"
 
 # Feature Engineering Settings
 features:
-  # Technical Indicators
-  indicators:
-    rsi_period: 14
-    macd_fast: 12
-    macd_slow: 26
-    macd_signal: 9
-    bollinger_period: 20
-    bollinger_std: 2
+  # Rolling window sizes (in number of snapshots, each ~2 min)
+  mempool_size_windows: [3, 6, 15, 30]  # 6min, 12min, 30min, 1h
 
-  # Rolling Windows
-  rolling_windows: [5, 10, 20, 30]
+  # Fee rate histogram buckets (sats/vB boundaries)
+  fee_rate_buckets: [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610]
 
-  # Volatility Windows
-  volatility_windows: [10, 20, 30]
+  # Block analysis
+  recent_blocks_count: 6       # analyze last 6 confirmed blocks
+  block_time_windows: [3, 6]   # rolling block-time windows
+
+  # Lag features
+  n_lags: 5                    # number of lag snapshots
 
 # Model Training Settings
 model:
-  # Prediction Horizons (in minutes)
+  # Prediction Horizons (in number of blocks)
   horizons:
-    - 30    # 30 minutes
-    - 60    # 1 hour
-    - 180   # 3 hours
-    - 360   # 6 hours
-    - 720   # 12 hours
+    - 1     # Next block (~10 min avg)
+    - 3     # Next 3 blocks (~30 min avg)
+    - 6     # Next 6 blocks (~1 hour avg)
 
-  # XGBoost Hyperparameters
+  # XGBoost Hyperparameters (tuned for fee prediction)
   xgboost:
-    n_estimators: 200
-    max_depth: 6
-    learning_rate: 0.05
+    n_estimators: 500
+    max_depth: 8
+    learning_rate: 0.03
     subsample: 0.8
-    colsample_bytree: 0.8
-    min_child_weight: 3
-    gamma: 0.1
-    reg_alpha: 0.1
-    reg_lambda: 1.0
+    colsample_bytree: 0.7
+    min_child_weight: 5
+    gamma: 0.15
+    reg_alpha: 0.5
+    reg_lambda: 2.0
     random_state: 42
 
+  # LightGBM Hyperparameters
+  lightgbm:
+    n_estimators: 500
+    max_depth: 8
+    learning_rate: 0.03
+    subsample: 0.8
+    colsample_bytree: 0.7
+    min_child_weight: 5
+    reg_alpha: 0.5
+    reg_lambda: 2.0
+    random_state: 42
+    num_leaves: 63
+
   # Training Parameters
-  test_size: 0.2
+  test_size: 0.15
   validation_size: 0.1
+
+  # Asymmetric loss: penalize under-estimation more (alpha > 0.5)
+  asymmetric_loss_alpha: 0.7
 
   # Model Storage
   models_dir: "models"
-  model_prefix: "xgb_btc"
+  model_prefix: "xgb_fee"
 
 # API Settings
 api:
   host: "0.0.0.0"
-  port: 8000
+  port: 1234
   reload: false
   workers: 1
   log_level: "info"
 
   # Model Cache TTL (seconds)
-  cache_ttl: 3600
+  cache_ttl: 60  # Cache predictions for 60 seconds
 
 # Automation Settings
 automation:
-  retrain_frequency_hours: 24  # Retrain every 24 hours
-  min_improvement_threshold: 0.02  # 2% improvement required to replace model
+  retrain_frequency_minutes: 60     # Retrain every 1 hour
+  live_predict_interval_minutes: 10 # Predict every 10 minutes
+  min_improvement_threshold: 0.05   # 5% improvement required to replace model
+  min_training_samples: 500         # Minimum snapshots required
 
 # Logging Settings
 logging:

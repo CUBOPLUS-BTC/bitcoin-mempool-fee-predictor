@@ -1,7 +1,7 @@
 """
-Backtesting Module
-Simulates trading strategies and calculates performance metrics
-Tests model predictions against historical data
+Backtesting Module for Mempool Fee Prediction
+Simulates fee estimation and calculates block inclusion metrics.
+Replaces the previous trade-simulation backtester.
 """
 
 import pandas as pd
@@ -10,51 +10,26 @@ from pathlib import Path
 import yaml
 import json
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from loguru import logger
 
 
-class Backtester:
+class FeeBacktester:
     """
-    Backtesting engine for BTC trading strategies
-    Simulates trades based on model predictions and calculates metrics
+    Backtesting engine for mempool fee prediction models.
+    Simulates: would the predicted fee have been sufficient for block inclusion?
+    Calculates savings vs naive approaches (always paying fastest fee).
     """
 
-    def __init__(
-        self,
-        config_path: str = "config/config.yaml",
-        initial_capital: float = 10000.0,
-        position_size: float = 1.0,
-        commission: float = 0.001
-    ):
-        """
-        Initialize backtester
-
-        Args:
-            config_path: Path to configuration file
-            initial_capital: Starting capital in USD
-            position_size: Fraction of capital to use per trade (0-1)
-            commission: Trading commission (0.001 = 0.1%)
-        """
+    def __init__(self, config_path: str = "config/config.yaml"):
         self.config = self._load_config(config_path)
-        self.initial_capital = initial_capital
-        self.position_size = position_size
-        self.commission = commission
-
         self.results_dir = Path("backtest_results")
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
-        # Trading state
-        self.trades = []
-        self.equity_curve = []
-        self.positions = []
-
     def _load_config(self, config_path: str) -> dict:
-        """Load configuration from YAML file"""
         try:
             with open(config_path, 'r') as f:
-                config = yaml.safe_load(f)
-            return config
+                return yaml.safe_load(f)
         except Exception as e:
             logger.error(f"Failed to load config: {e}")
             raise
@@ -62,338 +37,253 @@ class Backtester:
     def run_backtest(
         self,
         predictions_df: pd.DataFrame,
-        actual_prices_df: pd.DataFrame,
-        strategy: str = "simple"
+        actuals_df: pd.DataFrame = None,
+        horizon: int = 1
     ) -> Dict:
         """
-        Run backtest on predictions vs actual prices
+        Run backtest on fee predictions vs actual required fees.
 
         Args:
-            predictions_df: DataFrame with columns [timestamp, horizon, predicted_price, signal]
-            actual_prices_df: DataFrame with columns [timestamp, price]
-            strategy: Trading strategy to use ("simple", "threshold", "multi_horizon")
+            predictions_df: DataFrame with columns:
+                - timestamp: prediction timestamp
+                - predicted_fee: predicted fee in sats/vB
+                - actual_fee: actual required fee (ground truth)
+                - fee_fastest: what mempool.space recommended at that time
+            actuals_df: Optional separate DataFrame with actual fees
+            horizon: Block horizon being tested
 
         Returns:
             Dictionary with backtest results and metrics
         """
-        logger.info(f"Starting backtest with {strategy} strategy")
-        logger.info(f"Initial capital: ${self.initial_capital:,.2f}")
-        logger.info(f"Position size: {self.position_size:.1%}")
+        logger.info(f"Starting fee backtest for {horizon}-block horizon")
 
-        # Reset state
-        self.trades = []
-        self.equity_curve = []
-        self.positions = []
+        df = predictions_df.copy()
 
-        capital = self.initial_capital
-        position = None  # Current position: None, 'LONG', or 'SHORT'
-        entry_price = 0.0
-        position_size_btc = 0.0
+        if actuals_df is not None:
+            # Merge actuals
+            df = df.merge(actuals_df, on='timestamp', how='inner', suffixes=('', '_actual'))
 
-        # Sort predictions by timestamp
-        predictions_df = predictions_df.sort_values('timestamp').reset_index(drop=True)
+        if 'predicted_fee' not in df.columns or 'actual_fee' not in df.columns:
+            raise ValueError("DataFrame must have 'predicted_fee' and 'actual_fee' columns")
 
-        for idx, pred_row in predictions_df.iterrows():
-            timestamp = pred_row['timestamp']
-            signal = pred_row['signal']
-            predicted_price = pred_row['predicted_price']
+        y_pred = df['predicted_fee'].values
+        y_true = df['actual_fee'].values
+        y_naive = df['fee_fastest'].values if 'fee_fastest' in df.columns else y_true * 1.5
 
-            # Get actual price at this timestamp
-            actual_row = actual_prices_df[actual_prices_df['timestamp'] == timestamp]
-            if actual_row.empty:
-                continue
+        # === Core Metrics ===
+        metrics = self._calculate_inclusion_metrics(y_pred, y_true, y_naive, horizon)
 
-            current_price = actual_row.iloc[0]['price']
+        # === Per-sample results ===
+        df['would_confirm'] = y_pred >= y_true
+        df['overpay_sat_vb'] = np.maximum(y_pred - y_true, 0)
+        df['underpay_sat_vb'] = np.maximum(y_true - y_pred, 0)
+        df['error_sat_vb'] = y_pred - y_true
+        df['error_pct'] = np.where(y_true > 0, (y_pred - y_true) / y_true * 100, 0)
 
-            # Execute trading logic
-            if strategy == "simple":
-                capital, position, entry_price, position_size_btc = self._execute_simple_strategy(
-                    signal, current_price, capital, position, entry_price, position_size_btc, timestamp
-                )
+        # Savings vs naive
+        if 'fee_fastest' in df.columns:
+            df['savings_vs_naive'] = df['fee_fastest'] - df['predicted_fee']
+            df['savings_pct'] = np.where(
+                df['fee_fastest'] > 0,
+                df['savings_vs_naive'] / df['fee_fastest'] * 100,
+                0
+            )
 
-            # Record equity
-            if position == 'LONG':
-                equity = capital + (position_size_btc * current_price)
-            elif position == 'SHORT':
-                equity = capital + (entry_price - current_price) * position_size_btc
-            else:
-                equity = capital
+        # === Time-based analysis ===
+        time_analysis = {}
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df['hour'] = df['timestamp'].dt.hour
 
-            self.equity_curve.append({
-                'timestamp': timestamp,
-                'equity': equity,
-                'capital': capital,
-                'position': position,
-                'price': current_price
+            # Inclusion accuracy by hour
+            hourly = df.groupby('hour').agg({
+                'would_confirm': 'mean',
+                'overpay_sat_vb': 'mean',
+                'error_sat_vb': 'mean',
+            }).round(3)
+
+            time_analysis['hourly_inclusion_accuracy'] = hourly['would_confirm'].to_dict()
+            time_analysis['worst_hour'] = int(hourly['would_confirm'].idxmin())
+            time_analysis['best_hour'] = int(hourly['would_confirm'].idxmax())
+
+        # === Congestion regime analysis ===
+        regime_analysis = {}
+        if 'actual_fee' in df.columns:
+            df['fee_regime'] = pd.cut(
+                df['actual_fee'],
+                bins=[0, 5, 15, 50, 100, float('inf')],
+                labels=['very_low', 'low', 'medium', 'high', 'extreme']
+            )
+            regime_stats = df.groupby('fee_regime', observed=True).agg({
+                'would_confirm': ['mean', 'count'],
+                'overpay_sat_vb': 'mean',
             })
+            for regime in regime_stats.index:
+                regime_analysis[str(regime)] = {
+                    'inclusion_accuracy': float(regime_stats.loc[regime, ('would_confirm', 'mean')]),
+                    'sample_count': int(regime_stats.loc[regime, ('would_confirm', 'count')]),
+                    'avg_overpay': float(regime_stats.loc[regime, ('overpay_sat_vb', 'mean')]),
+                }
 
-        # Close any open position at the end
-        if position is not None:
-            final_price = self.equity_curve[-1]['price']
-            capital = self._close_position(position, entry_price, final_price, capital, position_size_btc, timestamp)
-            position = None
-
-        # Calculate metrics
-        metrics = self._calculate_metrics(capital)
-
-        logger.info(f"Backtest complete. Final capital: ${capital:,.2f}")
-        logger.info(f"Total return: {metrics['total_return']:.2%}")
-
-        return {
+        results = {
+            'horizon_blocks': horizon,
             'metrics': metrics,
-            'trades': self.trades,
-            'equity_curve': self.equity_curve,
-            'final_capital': capital
+            'time_analysis': time_analysis,
+            'regime_analysis': regime_analysis,
+            'n_samples': len(df),
+            'backtest_timestamp': datetime.now().isoformat(),
         }
 
-    def _execute_simple_strategy(
+        logger.info(f"Backtest complete: Inclusion={metrics['block_inclusion_accuracy']:.2%}, "
+                     f"MAE={metrics['mae']:.2f}, Savings={metrics.get('avg_savings_pct', 0):.1f}%")
+
+        return results
+
+    def _calculate_inclusion_metrics(
         self,
-        signal: str,
-        current_price: float,
-        capital: float,
-        position: Optional[str],
-        entry_price: float,
-        position_size_btc: float,
-        timestamp: datetime
-    ) -> Tuple[float, Optional[str], float, float]:
-        """
-        Execute simple trading strategy
-        BUY signal -> go LONG, SELL signal -> close position or go SHORT
-        """
-        # Close existing position if signal changes
-        if position == 'LONG' and signal == 'SELL':
-            capital = self._close_position(position, entry_price, current_price, capital, position_size_btc, timestamp)
-            position = None
-            position_size_btc = 0.0
-            entry_price = 0.0
+        y_pred: np.ndarray,
+        y_true: np.ndarray,
+        y_naive: np.ndarray,
+        horizon: int
+    ) -> Dict[str, float]:
+        """Calculate comprehensive fee prediction metrics"""
 
-        # Open new position
-        if position is None and signal == 'BUY':
-            # Go LONG
-            trade_capital = capital * self.position_size
-            commission_paid = trade_capital * self.commission
-            position_size_btc = (trade_capital - commission_paid) / current_price
-            capital -= trade_capital
-            entry_price = current_price
-            position = 'LONG'
+        safe_y = np.where(y_true > 0, y_true, 1)
+        overpay = np.maximum(y_pred - y_true, 0)
+        underpay = np.maximum(y_true - y_pred, 0)
+        errors = y_pred - y_true
+        abs_errors = np.abs(errors)
+        relative_errors = abs_errors / safe_y
 
-            self.positions.append({
-                'timestamp': timestamp,
-                'type': 'LONG',
-                'entry_price': entry_price,
-                'size_btc': position_size_btc,
-                'capital_used': trade_capital
-            })
+        metrics = {
+            # Core accuracy
+            'block_inclusion_accuracy': float(np.mean(y_pred >= y_true)),
+            'mae': float(np.mean(abs_errors)),
+            'rmse': float(np.sqrt(np.mean(errors ** 2))),
+            'mape': float(np.mean(relative_errors) * 100),
+            'median_abs_error': float(np.median(abs_errors)),
 
-        return capital, position, entry_price, position_size_btc
+            # Directional
+            'avg_overpay_sat_vb': float(np.mean(overpay)),
+            'avg_underpay_sat_vb': float(np.mean(underpay)),
+            'max_underpay_sat_vb': float(np.max(underpay)),
+            'pct_overpaying': float(np.mean(y_pred > y_true)),
+            'pct_underpaying': float(np.mean(y_pred < y_true)),
+            'pct_exact': float(np.mean(y_pred == y_true)),
 
-    def _close_position(
-        self,
-        position: str,
-        entry_price: float,
-        exit_price: float,
-        capital: float,
-        position_size_btc: float,
-        timestamp: datetime
-    ) -> float:
-        """Close a position and calculate PnL"""
-        if position == 'LONG':
-            gross_proceeds = position_size_btc * exit_price
-            commission_paid = gross_proceeds * self.commission
-            net_proceeds = gross_proceeds - commission_paid
-            capital += net_proceeds
+            # Tolerance bands
+            'within_1_sat': float(np.mean(abs_errors <= 1)),
+            'within_2_sat': float(np.mean(abs_errors <= 2)),
+            'within_5_sat': float(np.mean(abs_errors <= 5)),
+            'within_10pct': float(np.mean(relative_errors < 0.10)),
+            'within_20pct': float(np.mean(relative_errors < 0.20)),
+            'within_50pct': float(np.mean(relative_errors < 0.50)),
 
-            pnl = net_proceeds - (position_size_btc * entry_price)
-            pnl_pct = (exit_price - entry_price) / entry_price
+            # Stuck transactions (worst case for user)
+            'stuck_rate': float(np.mean(y_pred < y_true)),
+            'severely_stuck_rate': float(np.mean((y_true - y_pred) > 10)),  # >10 sat/vB short
+        }
 
-            self.trades.append({
-                'timestamp': timestamp,
-                'type': 'LONG',
-                'entry_price': entry_price,
-                'exit_price': exit_price,
-                'size_btc': position_size_btc,
-                'pnl': pnl,
-                'pnl_pct': pnl_pct,
-                'gross_proceeds': gross_proceeds,
-                'commission': commission_paid
-            })
-
-        return capital
-
-    def _calculate_metrics(self, final_capital: float) -> Dict[str, float]:
-        """Calculate backtesting metrics"""
-        metrics = {}
-
-        # Basic returns
-        metrics['initial_capital'] = self.initial_capital
-        metrics['final_capital'] = final_capital
-        metrics['total_return'] = (final_capital - self.initial_capital) / self.initial_capital
-        metrics['total_pnl'] = final_capital - self.initial_capital
-
-        # Trade statistics
-        if self.trades:
-            trades_df = pd.DataFrame(self.trades)
-            metrics['num_trades'] = len(self.trades)
-            metrics['winning_trades'] = (trades_df['pnl'] > 0).sum()
-            metrics['losing_trades'] = (trades_df['pnl'] < 0).sum()
-            metrics['win_rate'] = metrics['winning_trades'] / metrics['num_trades'] if metrics['num_trades'] > 0 else 0
-
-            metrics['avg_win'] = trades_df[trades_df['pnl'] > 0]['pnl'].mean() if metrics['winning_trades'] > 0 else 0
-            metrics['avg_loss'] = trades_df[trades_df['pnl'] < 0]['pnl'].mean() if metrics['losing_trades'] > 0 else 0
-            metrics['largest_win'] = trades_df['pnl'].max()
-            metrics['largest_loss'] = trades_df['pnl'].min()
-
-            # Profit factor
-            total_wins = trades_df[trades_df['pnl'] > 0]['pnl'].sum()
-            total_losses = abs(trades_df[trades_df['pnl'] < 0]['pnl'].sum())
-            metrics['profit_factor'] = total_wins / total_losses if total_losses > 0 else float('inf')
-        else:
-            metrics['num_trades'] = 0
-            metrics['win_rate'] = 0
-            metrics['profit_factor'] = 0
-
-        # Equity curve metrics
-        if self.equity_curve:
-            equity_df = pd.DataFrame(self.equity_curve)
-
-            # Drawdown
-            equity_df['peak'] = equity_df['equity'].cummax()
-            equity_df['drawdown'] = (equity_df['equity'] - equity_df['peak']) / equity_df['peak']
-            metrics['max_drawdown'] = equity_df['drawdown'].min()
-
-            # Sharpe ratio (annualized, assuming 365 days)
-            equity_df['returns'] = equity_df['equity'].pct_change()
-            if len(equity_df) > 1:
-                daily_returns = equity_df['returns'].dropna()
-                if len(daily_returns) > 0 and daily_returns.std() > 0:
-                    metrics['sharpe_ratio'] = (daily_returns.mean() / daily_returns.std()) * np.sqrt(365)
-                else:
-                    metrics['sharpe_ratio'] = 0
-            else:
-                metrics['sharpe_ratio'] = 0
-        else:
-            metrics['max_drawdown'] = 0
-            metrics['sharpe_ratio'] = 0
+        # Savings vs naive (always paying fastest fee)
+        naive_cost = np.sum(y_naive)
+        model_cost = np.sum(y_pred)
+        if naive_cost > 0:
+            metrics['total_savings_vs_naive_pct'] = float((1 - model_cost / naive_cost) * 100)
+            metrics['avg_savings_pct'] = float(np.mean(
+                np.where(y_naive > 0, (y_naive - y_pred) / y_naive * 100, 0)
+            ))
+            # Only count savings when model still achieves inclusion
+            included_mask = y_pred >= y_true
+            if included_mask.any():
+                metrics['savings_when_included_pct'] = float(np.mean(
+                    np.where(y_naive[included_mask] > 0,
+                             (y_naive[included_mask] - y_pred[included_mask]) / y_naive[included_mask] * 100,
+                             0)
+                ))
 
         return metrics
 
     def save_results(self, results: Dict, filename: Optional[str] = None) -> str:
-        """
-        Save backtest results to file
-
-        Args:
-            results: Backtest results dictionary
-            filename: Custom filename (optional)
-
-        Returns:
-            Path where results were saved
-        """
+        """Save backtest results"""
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"backtest_{timestamp}.json"
+            horizon = results.get('horizon_blocks', 0)
+            filename = f"fee_backtest_{horizon}block_{timestamp}.json"
 
         filepath = self.results_dir / filename
 
-        # Convert to JSON-serializable format
-        def convert_to_native(obj):
-            """Convert numpy types to native Python types"""
-            if isinstance(obj, dict):
-                return {k: convert_to_native(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [convert_to_native(item) for item in obj]
-            elif isinstance(obj, (np.integer, np.int64)):
-                return int(obj)
-            elif isinstance(obj, (np.floating, np.float64)):
-                return float(obj)
-            elif isinstance(obj, pd.Timestamp):
-                return str(obj)
-            elif hasattr(obj, 'item'):  # numpy scalar
-                return obj.item()
-            else:
-                return obj
-
-        results_serializable = convert_to_native({
-            'metrics': results['metrics'],
-            'trades': results['trades'],
-            'equity_curve': results['equity_curve'],
-            'final_capital': results['final_capital']
-        })
-
         with open(filepath, 'w') as f:
-            json.dump(results_serializable, f, indent=2)
+            json.dump(results, f, indent=2, default=str)
 
         logger.info(f"✓ Backtest results saved to {filepath}")
         return str(filepath)
 
     def print_summary(self, results: Dict) -> None:
-        """Print backtest summary to console"""
-        metrics = results['metrics']
+        """Print formatted backtest summary"""
+        m = results['metrics']
+        horizon = results.get('horizon_blocks', '?')
 
-        print("\n" + "=" * 80)
-        print("BACKTEST RESULTS SUMMARY")
-        print("=" * 80)
+        print(f"\n{'=' * 80}")
+        print(f"⚡ FEE PREDICTION BACKTEST — {horizon}-BLOCK HORIZON")
+        print(f"{'=' * 80}")
 
-        print(f"\n💰 CAPITAL:")
-        print(f"  Initial Capital: ${metrics['initial_capital']:,.2f}")
-        print(f"  Final Capital: ${metrics['final_capital']:,.2f}")
-        print(f"  Total P&L: ${metrics['total_pnl']:,.2f}")
-        print(f"  Total Return: {metrics['total_return']:.2%}")
+        print(f"\n🎯 INCLUSION METRICS:")
+        print(f"  Block Inclusion Accuracy: {m['block_inclusion_accuracy']:.2%}")
+        print(f"  Stuck Rate: {m['stuck_rate']:.2%}")
+        print(f"  Severely Stuck (>10 sat/vB short): {m['severely_stuck_rate']:.2%}")
 
-        print(f"\n📊 TRADE STATISTICS:")
-        print(f"  Total Trades: {metrics['num_trades']}")
-        print(f"  Winning Trades: {metrics['winning_trades']}")
-        print(f"  Losing Trades: {metrics['losing_trades']}")
-        print(f"  Win Rate: {metrics['win_rate']:.2%}")
-        print(f"  Profit Factor: {metrics['profit_factor']:.2f}")
+        print(f"\n📊 ERROR METRICS:")
+        print(f"  MAE: {m['mae']:.2f} sats/vB")
+        print(f"  RMSE: {m['rmse']:.2f} sats/vB")
+        print(f"  MAPE: {m['mape']:.1f}%")
+        print(f"  Median Abs Error: {m['median_abs_error']:.2f} sats/vB")
 
-        if metrics['num_trades'] > 0:
-            print(f"\n💵 PROFIT/LOSS:")
-            print(f"  Average Win: ${metrics['avg_win']:,.2f}")
-            print(f"  Average Loss: ${metrics['avg_loss']:,.2f}")
-            print(f"  Largest Win: ${metrics['largest_win']:,.2f}")
-            print(f"  Largest Loss: ${metrics['largest_loss']:,.2f}")
+        print(f"\n💰 COST ANALYSIS:")
+        print(f"  Avg Overpay: {m['avg_overpay_sat_vb']:.2f} sats/vB")
+        print(f"  Avg Underpay: {m['avg_underpay_sat_vb']:.2f} sats/vB")
+        print(f"  Max Underpay: {m['max_underpay_sat_vb']:.2f} sats/vB")
+        if 'avg_savings_pct' in m:
+            print(f"  Savings vs Always-Fastest: {m['avg_savings_pct']:.1f}%")
 
-        print(f"\n📉 RISK METRICS:")
-        print(f"  Max Drawdown: {metrics['max_drawdown']:.2%}")
-        print(f"  Sharpe Ratio: {metrics['sharpe_ratio']:.2f}")
+        print(f"\n📏 TOLERANCE BANDS:")
+        print(f"  Within 1 sat/vB: {m['within_1_sat']:.2%}")
+        print(f"  Within 5 sat/vB: {m['within_5_sat']:.2%}")
+        print(f"  Within 20%: {m['within_20pct']:.2%}")
 
-        print("\n" + "=" * 80)
+        # Regime analysis
+        ra = results.get('regime_analysis', {})
+        if ra:
+            print(f"\n🌡️ BY CONGESTION REGIME:")
+            for regime, stats in ra.items():
+                print(f"  {regime:10s}: Inclusion={stats['inclusion_accuracy']:.2%} "
+                      f"({stats['sample_count']} samples, avg overpay={stats['avg_overpay']:.1f})")
+
+        print(f"\n  Total samples: {results['n_samples']:,}")
+        print(f"{'=' * 80}")
 
 
 def main():
     """CLI entry point for backtesting"""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Backtest BTC trading strategies")
-    parser.add_argument('--predictions', type=str, required=True, help='Path to predictions CSV')
-    parser.add_argument('--prices', type=str, required=True, help='Path to actual prices CSV')
-    parser.add_argument('--capital', type=float, default=10000.0, help='Initial capital')
-    parser.add_argument('--position-size', type=float, default=1.0, help='Position size (0-1)')
-    parser.add_argument('--commission', type=float, default=0.001, help='Commission rate')
-    parser.add_argument('--strategy', type=str, default='simple', help='Trading strategy')
+    parser = argparse.ArgumentParser(description="Backtest fee predictions")
+    parser.add_argument('--predictions', type=str, required=True, help='Predictions CSV')
+    parser.add_argument('--horizon', type=int, default=1, help='Block horizon')
+    parser.add_argument('--config', type=str, default='config/config.yaml')
 
     args = parser.parse_args()
 
-    # Setup logging
     logger.add("logs/backtest.log", rotation="1 day", retention="7 days")
 
-    # Load data
-    predictions_df = pd.read_csv(args.predictions)
-    predictions_df['timestamp'] = pd.to_datetime(predictions_df['timestamp'])
-
-    prices_df = pd.read_csv(args.prices)
-    prices_df['timestamp'] = pd.to_datetime(prices_df['timestamp'])
+    # Load predictions
+    df = pd.read_csv(args.predictions)
+    if 'timestamp' in df.columns:
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
 
     # Run backtest
-    backtester = Backtester(
-        initial_capital=args.capital,
-        position_size=args.position_size,
-        commission=args.commission
-    )
+    backtester = FeeBacktester(config_path=args.config)
+    results = backtester.run_backtest(df, horizon=args.horizon)
 
-    results = backtester.run_backtest(predictions_df, prices_df, strategy=args.strategy)
-
-    # Print and save results
     backtester.print_summary(results)
     backtester.save_results(results)
 

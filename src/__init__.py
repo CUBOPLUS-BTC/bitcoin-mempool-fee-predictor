@@ -1,14 +1,7 @@
 """
-BTC MLOps Local - Source Package
-Production-ready Bitcoin price prediction system
+Bitcoin Mempool Fee Prediction Framework
+Predicts required fees (sats/vByte) for block inclusion using ML models.
 """
 
-__version__ = "1.0.0"
-__author__ = "BTC MLOps Team"
-
-from . import ingestion
-from . import features
-from . import train
-from . import inference
-
-__all__ = ["ingestion", "features", "train", "inference"]
+__version__ = "2.0.0"
+__description__ = "Mempool fee prediction using XGBoost + LightGBM ensemble"

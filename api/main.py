@@ -1,54 +1,65 @@
 """
 FastAPI main application
-Production-ready BTC prediction API with model versioning
+Bitcoin Mempool Fee Prediction API
+Provides real-time fee predictions for block inclusion.
 """
 
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Header
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import uvicorn
 from datetime import datetime
 import logging
+import sys
+from pathlib import Path
 
-from app.schemas import PredictionRequest, PredictionResponse, HealthResponse, ModelMetrics
-from app.services.prediction_service import PredictionService
-from app.services.monitoring_service import MonitoringService
-from app.utils.model_manager import ModelManager
-from app.utils.rate_limiter import RateLimiter
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Configurar logging
+from src.ingestion import MempoolDataIngestion
+from src.inference import FeeModelInference
+
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Inicializar servicios globales
-model_manager = ModelManager()
-monitoring_service = MonitoringService()
-rate_limiter = RateLimiter(max_requests=100, window_seconds=60)
+# Global state
+ingestion = None
+inference = None
+cached_prediction = None
+cache_timestamp = None
+CACHE_TTL = 60  # seconds
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle management"""
+    global ingestion, inference
+
     # Startup
-    logger.info("🚀 Starting BTC Prediction API...")
-    model_manager.load_models()
-    logger.info(f"✅ Loaded models: {model_manager.get_available_versions()}")
-    
+    logger.info("🚀 Starting Mempool Fee Prediction API...")
+    ingestion = MempoolDataIngestion()
+    inference = FeeModelInference()
+    inference.load_all_models()
+    logger.info(f"✅ Models loaded: {inference.get_loaded_models_info()}")
+
     yield
-    
+
     # Shutdown
-    logger.info("📊 Saving final metrics...")
-    monitoring_service.save_metrics()
-    logger.info("👋 Shutting down BTC Prediction API")
+    logger.info("👋 Shutting down Fee Prediction API")
+
 
 # Create FastAPI app
 app = FastAPI(
-    title="BTC Prediction API",
-    description="Production-ready API for Bitcoin price predictions with model versioning and monitoring",
-    version="1.0.0",
+    title="Bitcoin Mempool Fee Prediction API",
+    description="ML-powered fee prediction for Bitcoin block inclusion. "
+                "Predicts the optimal fee rate (sats/vByte) needed to get "
+                "your transaction confirmed in the next 1, 3, or 6 blocks.",
+    version="2.0.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc"
@@ -57,25 +68,12 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En producción, especificar dominios
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Dependency injection
-def get_prediction_service():
-    """Dependency: Prediction service"""
-    return PredictionService(model_manager, monitoring_service)
-
-async def check_rate_limit(x_client_id: str = Header(default="anonymous")):
-    """Rate limiting"""
-    if not rate_limiter.allow_request(x_client_id):
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded. Try again later."
-        )
-    return x_client_id
 
 # ============================================================================
 # ENDPOINTS
@@ -85,203 +83,189 @@ async def check_rate_limit(x_client_id: str = Header(default="anonymous")):
 async def root():
     """Root endpoint"""
     return {
-        "message": "BTC Prediction API",
-        "version": "1.0.0",
+        "service": "Bitcoin Mempool Fee Prediction API",
+        "version": "2.0.0",
         "status": "operational",
-        "docs": "/docs"
+        "docs": "/docs",
+        "endpoints": {
+            "predict": "/fees/predict",
+            "current": "/fees/current",
+            "health": "/health",
+            "models": "/models",
+        }
     }
 
-@app.get("/health", response_model=HealthResponse, tags=["General"])
+
+@app.get("/health", tags=["General"])
 async def health_check():
     """Health check endpoint"""
+    model_info = inference.get_loaded_models_info() if inference else {}
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "models_loaded": len(model_manager.get_available_versions()),
-        "active_model": model_manager.get_active_version()
+        "models_loaded": model_info.get('total_models', 0),
+        "xgb_horizons": model_info.get('xgb_models', []),
+        "lgb_horizons": model_info.get('lgb_models', []),
     }
 
-@app.post("/predict", response_model=PredictionResponse, tags=["Predictions"])
-async def predict(
-    request: PredictionRequest,
+
+@app.get("/fees/predict", tags=["Fee Prediction"])
+async def predict_fees(
     background_tasks: BackgroundTasks,
-    client_id: str = Depends(check_rate_limit),
-    prediction_service: PredictionService = Depends(get_prediction_service)
+    use_ensemble: bool = Query(True, description="Use XGBoost + LightGBM ensemble"),
 ):
     """
-    Make BTC price predictions
-    
-    - **timeframe**: Prediction horizon (30m, 1h, 3h, 6h, 12h)
-    - **current_price**: Current BTC price (optional, will fetch if not provided)
-    - **use_volatility_filter**: Enable/disable volatility protection (default: true)
-    - **model_version**: Specific model version to use (optional, uses active by default)
+    Predict optimal fee rates for block inclusion.
+
+    Returns predictions for multiple block horizons (1, 3, 6 blocks)
+    with confidence intervals and a recommendation.
+
+    No request body needed — fetches live mempool data automatically.
     """
+    global cached_prediction, cache_timestamp
+
+    # Check cache
+    if (cached_prediction is not None and cache_timestamp is not None
+            and (datetime.now() - cache_timestamp).total_seconds() < CACHE_TTL):
+        return cached_prediction
+
     try:
-        # Hacer predicción
-        result = await prediction_service.predict(
-            timeframe=request.timeframe,
-            current_price=request.current_price,
-            use_volatility_filter=request.use_volatility_filter,
-            model_version=request.version,  # Fixed: use .version not .model_version
-            client_id=client_id
-        )
-        
-        # Log asíncrono en background
-        background_tasks.add_task(
-            monitoring_service.log_prediction,
-            request=request,
-            response=result,
-            client_id=client_id
-        )
-        
-        return result
-        
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        # Fetch live snapshot
+        snapshot = ingestion.fetch_full_snapshot()
+        if snapshot is None:
+            raise HTTPException(status_code=503, detail="Could not fetch mempool data")
+
+        # Load historical data for features
+        snapshots_df = ingestion.load_snapshots()
+        if snapshots_df is None or len(snapshots_df) < 10:
+            # Minimal: use just the current snapshot
+            import pandas as pd
+            snapshots_df = pd.DataFrame([snapshot])
+        else:
+            import pandas as pd
+            snapshots_df = pd.concat(
+                [snapshots_df, pd.DataFrame([snapshot])],
+                ignore_index=True
+            )
+
+        # Make predictions
+        response = inference.predict_from_snapshot(snapshots_df, use_ensemble=use_ensemble)
+
+        # Cache
+        cached_prediction = response
+        cache_timestamp = datetime.now()
+
+        # Save snapshot in background
+        background_tasks.add_task(ingestion.save_snapshot, snapshot)
+
+        return response
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Prediction error: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
-@app.post("/predict/batch", tags=["Predictions"])
-async def predict_batch(
-    requests: list[PredictionRequest],
-    background_tasks: BackgroundTasks,
-    client_id: str = Depends(check_rate_limit),
-    prediction_service: PredictionService = Depends(get_prediction_service)
-):
-    """
-    Make multiple predictions at once
-    Max 10 predictions per batch
-    """
-    if len(requests) > 10:
-        raise HTTPException(
-            status_code=400,
-            detail="Maximum 10 predictions per batch"
-        )
-    
-    results = []
-    for req in requests:
-        try:
-            result = await prediction_service.predict(
-                timeframe=req.timeframe,
-                current_price=req.current_price,
-                use_volatility_filter=req.use_volatility_filter,
-                model_version=req.version,  # Fixed: use .version not .model_version
-                client_id=client_id
-            )
-            results.append(result)
-        except Exception as e:
-            logger.error(f"Batch prediction error: {e}")
-            results.append({"error": str(e), "timeframe": req.timeframe})
-    
-    return {"predictions": results}
 
-@app.get("/metrics", response_model=ModelMetrics, tags=["Monitoring"])
-async def get_metrics(
-    timeframe: str = None,
-    days: int = 7
-):
+@app.get("/fees/current", tags=["Fee Prediction"])
+async def get_current_fees():
     """
-    Get model performance metrics
-    
-    - **timeframe**: Filter by specific timeframe
-    - **days**: Number of days to look back (default: 7)
+    Get current mempool fees from mempool.space (no ML prediction).
+    Raw fee data directly from the network.
     """
     try:
-        metrics = monitoring_service.get_metrics(
-            timeframe=timeframe,
-            days=days
-        )
-        return metrics
+        fees = ingestion.fetch_recommended_fees()
+        mempool = ingestion.fetch_mempool_state()
+
+        if fees is None:
+            raise HTTPException(status_code=503, detail="Could not fetch fee data")
+
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "fees": {
+                "fastest": fees.get('fastestFee', 0),
+                "half_hour": fees.get('halfHourFee', 0),
+                "hour": fees.get('hourFee', 0),
+                "economy": fees.get('economyFee', 0),
+                "minimum": fees.get('minimumFee', 0),
+            },
+            "mempool": {
+                "tx_count": mempool.get('count', 0) if mempool else 0,
+                "vsize_mb": round(mempool.get('vsize', 0) / 1e6, 1) if mempool else 0,
+                "total_fee_btc": round(mempool.get('total_fee', 0) / 1e8, 4) if mempool else 0,
+            },
+            "source": "mempool.space"
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Metrics error: {e}")
-        raise HTTPException(status_code=500, detail="Error fetching metrics")
+        logger.error(f"Current fees error: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching current fees")
+
+
+@app.get("/fees/history", tags=["Fee Prediction"])
+async def get_prediction_history(
+    limit: int = Query(50, ge=1, le=500, description="Number of records to return")
+):
+    """
+    Get history of fee predictions and their validation results.
+    """
+    try:
+        import pandas as pd
+
+        log_file = Path("bitacora_fee_predictions.csv")
+        if not log_file.exists():
+            return {"predictions": [], "total": 0}
+
+        df = pd.read_csv(log_file)
+        df = df.sort_values('timestamp_pred', ascending=False).head(limit)
+
+        records = df.to_dict('records')
+
+        # Statistics
+        validated = df[df['status'] == 'VALIDATED']
+        stats = {}
+        if len(validated) > 0:
+            stats['total_validated'] = len(validated)
+            stats['block_inclusion_accuracy'] = float(validated['would_confirm'].mean())
+            stats['avg_overpay_sat_vb'] = float(validated['overpay_sat_vb'].mean())
+
+        return {
+            "predictions": records,
+            "total": len(records),
+            "statistics": stats
+        }
+
+    except Exception as e:
+        logger.error(f"History error: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching prediction history")
+
 
 @app.get("/models", tags=["Models"])
 async def list_models():
-    """List all available model versions"""
-    return {
-        "available_versions": model_manager.get_available_versions(),
-        "active_version": model_manager.get_active_version(),
-        "candidate_version": model_manager.get_candidate_version()
-    }
+    """List all loaded model information"""
+    return inference.get_loaded_models_info() if inference else {"error": "Models not loaded"}
 
-@app.post("/models/{version}/activate", tags=["Models"])
-async def activate_model(
-    version: str,
-    api_key: str = Header(...)
-):
-    """
-    Activate a specific model version
-    Requires API key
-    """
-    # En producción, validar API key
-    if api_key != "your-secret-api-key":  # Cambiar en producción
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    
+
+@app.get("/mempool/blocks", tags=["Mempool"])
+async def get_mempool_blocks():
+    """Get projected mempool blocks with fee ranges"""
     try:
-        model_manager.set_active_version(version)
-        logger.info(f"✅ Activated model version: {version}")
+        blocks = ingestion.fetch_mempool_blocks()
+        if blocks is None:
+            raise HTTPException(status_code=503, detail="Could not fetch mempool blocks")
+
         return {
-            "status": "success",
-            "active_version": version,
-            "message": f"Model {version} is now active"
+            "timestamp": datetime.now().isoformat(),
+            "projected_blocks": blocks,
+            "n_blocks": len(blocks)
         }
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/ab-test/status", tags=["A/B Testing"])
-async def ab_test_status():
-    """Get A/B test status"""
-    return {
-        "enabled": model_manager.ab_test_enabled,
-        "active_model": model_manager.get_active_version(),
-        "candidate_model": model_manager.get_candidate_version(),
-        "traffic_split": model_manager.get_traffic_split()
-    }
-
-@app.post("/ab-test/enable", tags=["A/B Testing"])
-async def enable_ab_test(
-    candidate_version: str,
-    traffic_percentage: int = 10,
-    api_key: str = Header(...)
-):
-    """
-    Enable A/B testing with candidate model
-    
-    - **candidate_version**: Version to test
-    - **traffic_percentage**: % of traffic to send to candidate (1-50)
-    """
-    if api_key != "your-secret-api-key":
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    
-    if not 1 <= traffic_percentage <= 50:
-        raise HTTPException(
-            status_code=400,
-            detail="Traffic percentage must be between 1 and 50"
-        )
-    
-    try:
-        model_manager.enable_ab_test(candidate_version, traffic_percentage)
-        logger.info(f"✅ A/B test enabled: {traffic_percentage}% to {candidate_version}")
-        return {
-            "status": "success",
-            "active": model_manager.get_active_version(),
-            "candidate": candidate_version,
-            "traffic_split": f"{100-traffic_percentage}% / {traffic_percentage}%"
-        }
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.post("/ab-test/disable", tags=["A/B Testing"])
-async def disable_ab_test(api_key: str = Header(...)):
-    """Disable A/B testing"""
-    if api_key != "your-secret-api-key":
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    
-    model_manager.disable_ab_test()
-    logger.info("✅ A/B test disabled")
-    return {"status": "success", "message": "A/B testing disabled"}
 
 # ============================================================================
 # ERROR HANDLERS
@@ -289,7 +273,6 @@ async def disable_ab_test(api_key: str = Header(...)):
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
-    """Custom HTTP exception handler"""
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -300,7 +283,6 @@ async def http_exception_handler(request, exc):
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
-    """General exception handler"""
     logger.error(f"Unhandled exception: {exc}")
     return JSONResponse(
         status_code=500,
@@ -310,6 +292,7 @@ async def general_exception_handler(request, exc):
         }
     )
 
+
 # ============================================================================
 # RUN
 # ============================================================================
@@ -318,7 +301,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
-        reload=True,  # Solo en desarrollo
+        port=1234,
+        reload=True,
         log_level="info"
     )

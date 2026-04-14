@@ -1,338 +1,179 @@
 """
-Ensemble Module
-Combines predictions from multiple models to improve performance
-Supports different voting strategies and model weighting
+Ensemble Module for Mempool Fee Prediction
+Combines predictions from XGBoost and LightGBM models.
+Uses conservative bias to ensure block inclusion (slightly prefer over-estimation).
 """
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from loguru import logger
-from pathlib import Path
 
 
-class EnsemblePredictor:
+class FeeEnsemblePredictor:
     """
-    Ensemble predictor that combines multiple models
-    Supports: majority voting, weighted average, confidence-based
+    Ensemble predictor for mempool fee predictions.
+    Combines multiple model predictions with a conservative bias
+    to maximize block inclusion probability.
     """
 
-    def __init__(self, strategy: str = "weighted"):
+    def __init__(self, strategy: str = "weighted_conservative"):
         """
-        Initialize ensemble predictor
-
         Args:
-            strategy: Ensemble strategy ("majority", "weighted", "confidence")
+            strategy: Ensemble strategy
+                - "weighted": Simple weighted average
+                - "weighted_conservative": Weighted average with upward bias
+                - "max_safe": Always predict the higher fee (safest for user)
         """
         self.strategy = strategy
-        self.models = {}  # Model name -> model/predictor object
-        self.weights = {}  # Model name -> weight
+        self.weights = {}
 
-    def add_model(self, name: str, predictor, weight: float = 1.0):
-        """
-        Add a model to the ensemble
+    def set_weights(self, weights: Dict[str, float]):
+        """Set model weights for ensemble"""
+        self.weights = weights
 
-        Args:
-            name: Model identifier
-            predictor: Model or predictor object (must have predict method)
-            weight: Model weight for weighted strategies
-        """
-        self.models[name] = predictor
-        self.weights[name] = weight
-        logger.info(f"Added model '{name}' to ensemble with weight {weight}")
-
-    def predict_single(
+    def combine_predictions(
         self,
-        predictions: Dict[str, Dict]
+        predictions: Dict[str, float],
+        strategy: Optional[str] = None
     ) -> Dict:
         """
-        Combine predictions from multiple models for a single prediction
+        Combine fee predictions from multiple models.
 
         Args:
-            predictions: Dictionary mapping model name to prediction dict
-                        Each prediction dict should have: predicted_price, signal, confidence
+            predictions: Dict mapping model_name -> predicted_fee (sats/vB)
+            strategy: Override ensemble strategy
 
         Returns:
-            Combined prediction dictionary
+            Dict with ensemble prediction and metadata
         """
-        if len(predictions) == 0:
-            logger.warning("No predictions to ensemble")
+        strategy = strategy or self.strategy
+
+        if not predictions:
             return None
 
-        if self.strategy == "majority":
-            return self._majority_vote(predictions)
-        elif self.strategy == "weighted":
+        pred_values = list(predictions.values())
+        pred_names = list(predictions.keys())
+
+        if strategy == "weighted":
             return self._weighted_average(predictions)
-        elif self.strategy == "confidence":
-            return self._confidence_weighted(predictions)
+        elif strategy == "weighted_conservative":
+            return self._weighted_conservative(predictions)
+        elif strategy == "max_safe":
+            return self._max_safe(predictions)
         else:
-            raise ValueError(f"Unknown strategy: {self.strategy}")
-
-    def _majority_vote(self, predictions: Dict[str, Dict]) -> Dict:
-        """
-        Majority voting: Most common signal wins
-        """
-        signals = [pred['signal'] for pred in predictions.values()]
-        signal_counts = pd.Series(signals).value_counts()
-        ensemble_signal = signal_counts.index[0]
-
-        # Average price predictions
-        predicted_prices = [pred['predicted_price'] for pred in predictions.values()]
-        ensemble_price = np.mean(predicted_prices)
-
-        # Calculate confidence as % of models agreeing
-        confidence = signal_counts.iloc[0] / len(signals)
-
-        result = {
-            'predicted_price': ensemble_price,
-            'signal': ensemble_signal,
-            'confidence': confidence,
-            'strategy': 'majority_vote',
-            'n_models': len(predictions),
-            'individual_signals': signals
-        }
-
-        return result
-
-    def _weighted_average(self, predictions: Dict[str, Dict]) -> Dict:
-        """
-        Weighted average: Combine predictions using model weights
-        """
-        total_weight = sum(self.weights[name] for name in predictions.keys())
-
-        # Weighted average of prices
-        weighted_price = sum(
-            pred['predicted_price'] * self.weights[name]
-            for name, pred in predictions.items()
-        ) / total_weight
-
-        # Weighted signal (convert to numeric, average, convert back)
-        signal_map = {'SELL': -1, 'HOLD': 0, 'BUY': 1}
-        reverse_map = {-1: 'SELL', 0: 'HOLD', 1: 'BUY'}
-
-        weighted_signal_value = sum(
-            signal_map[pred['signal']] * self.weights[name]
-            for name, pred in predictions.items()
-        ) / total_weight
-
-        # Round to nearest signal
-        if weighted_signal_value > 0.3:
-            ensemble_signal = 'BUY'
-        elif weighted_signal_value < -0.3:
-            ensemble_signal = 'SELL'
-        else:
-            ensemble_signal = 'HOLD'
-
-        # Weighted average of confidences
-        weighted_confidence = sum(
-            pred.get('confidence', 1.0) * self.weights[name]
-            for name, pred in predictions.items()
-        ) / total_weight
-
-        result = {
-            'predicted_price': weighted_price,
-            'signal': ensemble_signal,
-            'confidence': weighted_confidence,
-            'strategy': 'weighted_average',
-            'n_models': len(predictions),
-            'weights_used': {name: self.weights[name] for name in predictions.keys()}
-        }
-
-        return result
-
-    def _confidence_weighted(self, predictions: Dict[str, Dict]) -> Dict:
-        """
-        Confidence-weighted: Weight by individual model confidence
-        """
-        total_confidence = sum(pred.get('confidence', 1.0) for pred in predictions.values())
-
-        if total_confidence == 0:
-            # Fallback to equal weighting
             return self._weighted_average(predictions)
 
-        # Confidence-weighted average of prices
-        weighted_price = sum(
-            pred['predicted_price'] * pred.get('confidence', 1.0)
-            for pred in predictions.values()
-        ) / total_confidence
+    def _weighted_average(self, predictions: Dict[str, float]) -> Dict:
+        """Simple weighted average of predictions"""
+        total_weight = 0
+        weighted_sum = 0
 
-        # Confidence-weighted signal
-        signal_map = {'SELL': -1, 'HOLD': 0, 'BUY': 1}
+        for name, pred in predictions.items():
+            w = self.weights.get(name, 1.0)
+            weighted_sum += pred * w
+            total_weight += w
 
-        weighted_signal_value = sum(
-            signal_map[pred['signal']] * pred.get('confidence', 1.0)
-            for pred in predictions.values()
-        ) / total_confidence
+        ensemble_fee = weighted_sum / total_weight if total_weight > 0 else np.mean(list(predictions.values()))
 
-        # Round to nearest signal
-        if weighted_signal_value > 0.3:
-            ensemble_signal = 'BUY'
-        elif weighted_signal_value < -0.3:
-            ensemble_signal = 'SELL'
-        else:
-            ensemble_signal = 'HOLD'
-
-        # Use maximum confidence
-        max_confidence = max(pred.get('confidence', 1.0) for pred in predictions.values())
-
-        result = {
-            'predicted_price': weighted_price,
-            'signal': ensemble_signal,
-            'confidence': max_confidence,
-            'strategy': 'confidence_weighted',
-            'n_models': len(predictions),
+        return {
+            'ensemble_fee': round(ensemble_fee, 2),
+            'ensemble_fee_rounded': max(1, int(np.ceil(ensemble_fee))),
+            'strategy': 'weighted',
+            'individual': predictions,
+            'agreement': self._calc_agreement(predictions),
         }
+
+    def _weighted_conservative(self, predictions: Dict[str, float]) -> Dict:
+        """
+        Weighted average with conservative (upward) bias.
+        Adds a small safety margin to reduce under-estimation risk.
+        """
+        result = self._weighted_average(predictions)
+        base_fee = result['ensemble_fee']
+
+        # Add 5-10% safety margin based on disagreement
+        agreement = result['agreement']
+        safety_margin = 0.05 + (1 - agreement) * 0.10  # 5-15% margin
+        conservative_fee = base_fee * (1 + safety_margin)
+
+        result['ensemble_fee'] = round(conservative_fee, 2)
+        result['ensemble_fee_rounded'] = max(1, int(np.ceil(conservative_fee)))
+        result['strategy'] = 'weighted_conservative'
+        result['safety_margin_pct'] = round(safety_margin * 100, 1)
 
         return result
 
-    def predict_batch(
+    def _max_safe(self, predictions: Dict[str, float]) -> Dict:
+        """Use the highest prediction (safest for user, but most expensive)"""
+        max_fee = max(predictions.values())
+
+        return {
+            'ensemble_fee': round(max_fee, 2),
+            'ensemble_fee_rounded': max(1, int(np.ceil(max_fee))),
+            'strategy': 'max_safe',
+            'individual': predictions,
+            'agreement': self._calc_agreement(predictions),
+        }
+
+    def _calc_agreement(self, predictions: Dict[str, float]) -> float:
+        """
+        Calculate agreement score between models (0-1).
+        1.0 = perfect agreement, 0.0 = high disagreement.
+        """
+        if len(predictions) < 2:
+            return 1.0
+
+        values = list(predictions.values())
+        mean_val = np.mean(values)
+        if mean_val == 0:
+            return 1.0
+
+        spread = max(values) - min(values)
+        agreement = max(0, 1.0 - (spread / mean_val))
+
+        return round(agreement, 3)
+
+    def combine_multi_horizon(
         self,
-        predictions_df: pd.DataFrame,
-        model_col: str = 'model',
-        required_cols: List[str] = None
-    ) -> pd.DataFrame:
+        horizon_predictions: Dict[int, Dict[str, float]]
+    ) -> Dict[int, Dict]:
         """
-        Ensemble predictions from a DataFrame with multiple model predictions
+        Combine predictions for multiple horizons.
 
         Args:
-            predictions_df: DataFrame with predictions from multiple models
-            model_col: Column name containing model identifier
-            required_cols: Required columns in each prediction
+            horizon_predictions: Dict mapping horizon -> {model_name: predicted_fee}
 
         Returns:
-            DataFrame with ensemble predictions
+            Dict mapping horizon -> ensemble result
         """
-        if required_cols is None:
-            required_cols = ['predicted_price', 'signal', 'confidence']
+        results = {}
+        for horizon, preds in horizon_predictions.items():
+            result = self.combine_predictions(preds)
+            if result:
+                result['horizon_blocks'] = horizon
+                results[horizon] = result
 
-        # Group by timestamp (or index)
-        if 'timestamp' in predictions_df.columns:
-            group_col = 'timestamp'
-        else:
-            group_col = predictions_df.index.name or 'index'
-
-        ensemble_predictions = []
-
-        for group_id, group_df in predictions_df.groupby(group_col):
-            # Convert to dict format
-            predictions = {}
-            for _, row in group_df.iterrows():
-                model_name = row[model_col]
-                pred_dict = {col: row[col] for col in required_cols if col in row}
-                predictions[model_name] = pred_dict
-
-            # Combine
-            ensemble_pred = self.predict_single(predictions)
-
-            if ensemble_pred:
-                ensemble_pred[group_col] = group_id
-                ensemble_predictions.append(ensemble_pred)
-
-        return pd.DataFrame(ensemble_predictions)
-
-
-def combine_model_predictions(
-    new_model_preds: pd.DataFrame,
-    old_model_preds: pd.DataFrame,
-    new_weight: float = 0.7,
-    old_weight: float = 0.3
-) -> pd.DataFrame:
-    """
-    Combine predictions from new XGBoost model and old model
-
-    Args:
-        new_model_preds: Predictions from new model (with directional accuracy)
-        old_model_preds: Predictions from old model (with price accuracy)
-        new_weight: Weight for new model (default 0.7 because better direction)
-        old_weight: Weight for old model (default 0.3 because better MAE)
-
-    Returns:
-        DataFrame with ensemble predictions
-    """
-    logger.info(f"Combining predictions with weights: new={new_weight}, old={old_weight}")
-
-    # Create ensemble
-    ensemble = EnsemblePredictor(strategy="weighted")
-
-    # Merge predictions on timestamp
-    merged = new_model_preds.merge(
-        old_model_preds,
-        on='timestamp',
-        how='inner',
-        suffixes=('_new', '_old')
-    )
-
-    logger.info(f"Merged {len(merged)} predictions")
-
-    ensemble_results = []
-
-    for _, row in merged.iterrows():
-        predictions = {
-            'new_model': {
-                'predicted_price': row['predicted_price_new'],
-                'signal': row['signal_new'],
-                'confidence': row.get('confidence_new', 1.0)
-            },
-            'old_model': {
-                'predicted_price': row['predicted_price_old'],
-                'signal': row['signal_old'],
-                'confidence': row.get('confidence_old', 1.0)
-            }
-        }
-
-        # Set weights
-        ensemble.weights = {'new_model': new_weight, 'old_model': old_weight}
-
-        # Combine
-        ensemble_pred = ensemble.predict_single(predictions)
-
-        if ensemble_pred:
-            ensemble_pred['timestamp'] = row['timestamp']
-            ensemble_pred['current_price'] = row.get('current_price_new', row.get('current_price_old'))
-            ensemble_results.append(ensemble_pred)
-
-    ensemble_df = pd.DataFrame(ensemble_results)
-
-    logger.info(f"✓ Created {len(ensemble_df)} ensemble predictions")
-
-    return ensemble_df
+        return results
 
 
 def main():
-    """CLI entry point for ensemble predictions"""
-    import argparse
+    """Demo of ensemble prediction"""
+    ensemble = FeeEnsemblePredictor(strategy="weighted_conservative")
+    ensemble.set_weights({"xgb": 0.6, "lgb": 0.4})
 
-    parser = argparse.ArgumentParser(description="Ensemble model predictions")
-    parser.add_argument('--new-preds', type=str, required=True, help='New model predictions CSV')
-    parser.add_argument('--old-preds', type=str, required=True, help='Old model predictions CSV')
-    parser.add_argument('--new-weight', type=float, default=0.7, help='Weight for new model')
-    parser.add_argument('--old-weight', type=float, default=0.3, help='Weight for old model')
-    parser.add_argument('--output', type=str, default='ensemble_predictions.csv', help='Output file')
+    # Example predictions
+    predictions = {
+        "xgb": 42.5,
+        "lgb": 38.2,
+    }
 
-    args = parser.parse_args()
-
-    # Load predictions
-    new_preds = pd.read_csv(args.new_preds)
-    new_preds['timestamp'] = pd.to_datetime(new_preds['timestamp'])
-
-    old_preds = pd.read_csv(args.old_preds)
-    old_preds['timestamp'] = pd.to_datetime(old_preds['timestamp'])
-
-    # Combine
-    ensemble_preds = combine_model_predictions(
-        new_preds,
-        old_preds,
-        new_weight=args.new_weight,
-        old_weight=args.old_weight
-    )
-
-    # Save
-    ensemble_preds.to_csv(args.output, index=False)
-    logger.info(f"✓ Ensemble predictions saved to {args.output}")
-
-    return 0
+    result = ensemble.combine_predictions(predictions)
+    print(f"Ensemble fee: {result['ensemble_fee_rounded']} sat/vB")
+    print(f"Strategy: {result['strategy']}")
+    print(f"Agreement: {result['agreement']}")
+    print(f"Individual: {result['individual']}")
 
 
 if __name__ == "__main__":
-    import sys
-    sys.exit(main())
+    main()

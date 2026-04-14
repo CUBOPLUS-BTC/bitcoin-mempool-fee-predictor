@@ -1,29 +1,29 @@
 """
-Live Prediction Script for GitHub Actions
-Runs every 30 minutes, replicating historical CSV format
+Live Fee Prediction Script
+Runs every 10 minutes, fetching mempool state and predicting fees.
+Logs predictions for validation against confirmed blocks.
+
+Usage:
+    python scripts/live_predict.py
+    python scripts/live_predict.py --once   # Single prediction
 """
-import os
+
 import sys
+import os
+import time
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.ingestion import DataIngestion
-from src.inference import ModelInference
+from src.ingestion import MempoolDataIngestion
+from src.inference import FeeModelInference
 
 # Configuration
-LOG_FILE = 'bitacora_new_models.csv'
-HORIZONS = {
-    '30min': '30m',
-    '60min': '1h',
-    '180min': '3h',
-    '360min': '6h',
-    '720min': '12h'
-}
+LOG_FILE = 'bitacora_fee_predictions.csv'
+HORIZONS = {1: '1block', 3: '3blocks', 6: '6blocks'}
 
 
 def load_or_create_bitacora():
@@ -31,28 +31,37 @@ def load_or_create_bitacora():
     if os.path.exists(LOG_FILE):
         df = pd.read_csv(LOG_FILE)
         df['timestamp_pred'] = pd.to_datetime(df['timestamp_pred'])
-        df['target_time'] = pd.to_datetime(df['target_time'])
         print(f"✅ Loaded {len(df)} existing predictions")
         return df
     else:
-        # Create new bitacora with historical CSV format
         df = pd.DataFrame(columns=[
             'timestamp_pred',
-            'timeframe',
-            'entry_price',
-            'predicted_price',
-            'direction_pred',
-            'target_time',
-            'actual_price',
-            'error_abs',
+            'horizon_blocks',
+            'horizon_label',
+            'mempool_tx_count',
+            'mempool_vsize_mb',
+            'current_fastest_fee',
+            'current_halfhour_fee',
+            'current_hour_fee',
+            'predicted_fee_sat_vb',
+            'predicted_fee_exact',
+            'confidence_score',
+            'models_used',
+            'actual_fee',
+            'would_confirm',
+            'overpay_sat_vb',
             'status'
         ])
-        print("✅ Created new bitacora")
+        print("✅ Created new fee prediction bitacora")
         return df
 
 
-def validate_pending_predictions(df):
-    """Validate pending predictions that reached target time"""
+def validate_pending_predictions(df, ingestion):
+    """
+    Validate pending predictions by checking confirmed blocks.
+    If enough blocks have been mined since the prediction,
+    compare predicted fee vs what was actually required.
+    """
     if df.empty:
         return df
 
@@ -63,45 +72,50 @@ def validate_pending_predictions(df):
 
     print(f"\n🔍 Validating {len(pending)} pending predictions...")
 
-    # Fetch current data for validation
-    try:
-        # Use direct ccxt call with limit to avoid rate limiting
-        import ccxt
-        exchange = ccxt.kraken()
-        ohlcv = exchange.fetch_ohlcv('BTC/USD', '30m', limit=50)  # 1 day = 48 candles
-
-        df_current = pd.DataFrame(
-            ohlcv,
-            columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
-        )
-        df_current['timestamp'] = pd.to_datetime(df_current['timestamp'], unit='ms')
-    except Exception as e:
-        print(f"⚠️  Could not fetch data for validation: {e}")
+    # Fetch current block data
+    blocks = ingestion.fetch_recent_blocks(count=15)
+    if not blocks:
+        print("⚠️  Could not fetch blocks for validation")
         return df
 
-    now = datetime.now()
+    current_height = blocks[0].get('height', 0) if blocks else 0
     validated_count = 0
 
     for idx, row in pending.iterrows():
-        target_time = pd.to_datetime(row['target_time'])
+        pred_time = pd.to_datetime(row['timestamp_pred'])
+        horizon = int(row['horizon_blocks'])
 
-        # Only validate if target time has passed
-        if now >= target_time:
-            # Find closest price to target time
-            df_current['timestamp'] = pd.to_datetime(df_current['timestamp'])
-            time_diff = abs(df_current['timestamp'] - target_time)
-            closest_idx = time_diff.idxmin()
-            actual_price = df_current.loc[closest_idx, 'close']
+        # Find the block height at prediction time (approximate)
+        # Use the time since prediction to estimate blocks mined
+        time_since = (datetime.now(timezone.utc) - pred_time.tz_localize('UTC')).total_seconds()
+        estimated_blocks_mined = time_since / 600  # ~10 min per block
 
-            # Calculate error
-            error_abs = abs(actual_price - row['predicted_price'])
+        # Only validate if enough blocks have passed
+        if estimated_blocks_mined >= horizon + 1:
+            # Find the min fee of blocks that were mined in the horizon window
+            # Use the median fee from recent blocks as ground truth
+            relevant_fees = []
+            for block in blocks:
+                extras = block.get('extras', {})
+                median_fee = extras.get('medianFee', 0)
+                min_fee = extras.get('feeRange', [0])[0] if extras.get('feeRange') else 0
+                if median_fee > 0:
+                    relevant_fees.append(min_fee if min_fee > 0 else median_fee)
 
-            # Update row
-            df.loc[idx, 'actual_price'] = actual_price
-            df.loc[idx, 'error_abs'] = error_abs
-            df.loc[idx, 'status'] = 'COMPLETED'
+            if relevant_fees:
+                # Use the minimum fee across the relevant blocks
+                actual_fee = min(relevant_fees[:horizon]) if len(relevant_fees) >= horizon else min(relevant_fees)
 
-            validated_count += 1
+                predicted = row['predicted_fee_sat_vb']
+                would_confirm = predicted >= actual_fee
+                overpay = max(0, predicted - actual_fee)
+
+                df.loc[idx, 'actual_fee'] = actual_fee
+                df.loc[idx, 'would_confirm'] = would_confirm
+                df.loc[idx, 'overpay_sat_vb'] = overpay
+                df.loc[idx, 'status'] = 'VALIDATED'
+
+                validated_count += 1
 
     if validated_count > 0:
         print(f"✅ Validated {validated_count} predictions")
@@ -109,99 +123,92 @@ def validate_pending_predictions(df):
     return df
 
 
-def run_live_prediction():
+def run_live_prediction(single_run: bool = False):
     """Main prediction function"""
-    print("="*80)
-    print("🚀 LIVE PREDICTION - NEW MODELS")
-    print(f"⏰ Timestamp: {datetime.now()}")
-    print("="*80)
+    print("=" * 80)
+    print("⚡ LIVE FEE PREDICTION — MEMPOOL MONITOR")
+    print(f"⏰ Timestamp: {datetime.now(timezone.utc).isoformat()}")
+    print("=" * 80)
 
     # Load/create bitacora
     log_df = load_or_create_bitacora()
 
-    # Validate pending predictions first
-    log_df = validate_pending_predictions(log_df)
+    # Initialize services
+    ingestion = MempoolDataIngestion()
+    inference = FeeModelInference()
 
-    # Fetch fresh data
-    print("\n📥 Fetching latest BTC data...")
-    ingestion = DataIngestion()
+    # Validate pending predictions
+    log_df = validate_pending_predictions(log_df, ingestion)
+
+    # Fetch live mempool data
+    print("\n📥 Fetching mempool state...")
+    snapshot = ingestion.fetch_full_snapshot()
+    if snapshot is None:
+        print("❌ Error: Could not fetch mempool data")
+        return
+
+    # Load historical snapshots for feature engineering
+    snapshots_df = ingestion.load_snapshots()
+    if snapshots_df is None or len(snapshots_df) < 30:
+        print("⚠️  Not enough historical data for reliable predictions")
+        print("   Need at least 30 snapshots. Run collector_daemon.py first.")
+        # Still try with whatever we have
+        if snapshots_df is None:
+            snapshots_df = pd.DataFrame([snapshot])
+        else:
+            snapshots_df = pd.concat([snapshots_df, pd.DataFrame([snapshot])], ignore_index=True)
+    else:
+        # Append current snapshot
+        snapshots_df = pd.concat([snapshots_df, pd.DataFrame([snapshot])], ignore_index=True)
+
+    print(f"✅ Mempool: {snapshot.get('mempool_tx_count', 0):,} txs, "
+          f"{snapshot.get('mempool_vsize', 0) / 1e6:.1f} MvB")
+    print(f"   Current fees: fastest={snapshot.get('fee_fastest', '?')}, "
+          f"halfhour={snapshot.get('fee_half_hour', '?')}, "
+          f"hour={snapshot.get('fee_hour', '?')} sat/vB")
+
+    # Make predictions
+    print("\n🤖 Making fee predictions...")
     try:
-        # Use simple limit approach (avoids rate limiting issues)
-        # 200 candles of 30min = ~4 days of data
-        import ccxt
-        exchange = ccxt.kraken()
-        ohlcv = exchange.fetch_ohlcv('BTC/USD', '30m', limit=200)
-
-        df_raw = pd.DataFrame(
-            ohlcv,
-            columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
-        )
-        df_raw['timestamp'] = pd.to_datetime(df_raw['timestamp'], unit='ms')
-
-        if df_raw is None or df_raw.empty:
-            print(f"❌ Error: No data fetched from exchange")
-            return
-
-        current_price = df_raw.iloc[-1]['close']
-        print(f"✅ Current BTC price: ${current_price:,.2f}")
+        response = inference.predict_from_snapshot(snapshots_df)
     except Exception as e:
-        print(f"❌ Error fetching data: {e}")
+        print(f"❌ Prediction error: {e}")
         import traceback
         traceback.print_exc()
         return
 
-    # Load models and make predictions
-    print("\n🤖 Loading models and making predictions...")
-    inference = ModelInference()
-
-    # Prepare features from raw data
-    features = inference.prepare_features_from_raw(df_raw)
-    if features is None:
-        print("❌ Error: Failed to prepare features")
-        return
-
-    timestamp_pred = datetime.now()
+    timestamp_pred = datetime.now(timezone.utc)
     new_predictions = []
 
-    for horizon_key, timeframe_label in HORIZONS.items():
-        try:
-            # Extract integer horizon from string (e.g., '30min' -> 30)
-            horizon_int = int(horizon_key.replace('min', ''))
+    for label, pred in response.get('fee_predictions', {}).items():
+        horizon = pred['horizon_blocks']
+        prediction = {
+            'timestamp_pred': timestamp_pred.isoformat(),
+            'horizon_blocks': horizon,
+            'horizon_label': label,
+            'mempool_tx_count': snapshot.get('mempool_tx_count', 0),
+            'mempool_vsize_mb': round(snapshot.get('mempool_vsize', 0) / 1e6, 1),
+            'current_fastest_fee': snapshot.get('fee_fastest', 0),
+            'current_halfhour_fee': snapshot.get('fee_half_hour', 0),
+            'current_hour_fee': snapshot.get('fee_hour', 0),
+            'predicted_fee_sat_vb': pred['predicted_fee_sat_vb'],
+            'predicted_fee_exact': pred['predicted_fee_exact'],
+            'confidence_score': pred['confidence_score'],
+            'models_used': ','.join(pred.get('models_used', [])),
+            'actual_fee': np.nan,
+            'would_confirm': np.nan,
+            'overpay_sat_vb': np.nan,
+            'status': 'PENDING'
+        }
+        new_predictions.append(prediction)
 
-            # Make prediction with prepared features
-            result = inference.predict_single_horizon(features, horizon_int)
+        ci = pred['confidence_interval']
+        print(f"  ✅ {label:10s}: {pred['predicted_fee_sat_vb']:3d} sat/vB "
+              f"[{ci[0]}-{ci[1]}] ({pred['priority']}) "
+              f"conf={pred['confidence_score']:.2f}")
 
-            if result is None:
-                print(f"⚠️  Skipping {timeframe_label}: No prediction")
-                continue
-
-            predicted_price = result['predicted_price']
-            direction = 'UP' if predicted_price > current_price else 'DOWN'
-
-            # Calculate target time
-            target_time = timestamp_pred + timedelta(minutes=horizon_int)
-
-            # Create prediction entry matching historical format
-            prediction = {
-                'timestamp_pred': timestamp_pred,
-                'timeframe': timeframe_label,
-                'entry_price': current_price,
-                'predicted_price': predicted_price,
-                'direction_pred': direction,
-                'target_time': target_time,
-                'actual_price': np.nan,
-                'error_abs': np.nan,
-                'status': 'PENDING'
-            }
-
-            new_predictions.append(prediction)
-
-            change_pct = ((predicted_price - current_price) / current_price) * 100
-            print(f"  ✅ {timeframe_label:4s}: ${predicted_price:,.2f} ({direction}) [{change_pct:+.2f}%]")
-
-        except Exception as e:
-            print(f"  ❌ {timeframe_label}: Error - {e}")
-            continue
+    # Recommendation
+    print(f"\n📋 Recommendation: {response.get('recommendation', 'N/A')}")
 
     # Append new predictions
     if new_predictions:
@@ -214,34 +221,47 @@ def run_live_prediction():
     print(f"💾 Saved to: {LOG_FILE}")
 
     # Show statistics
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("📊 STATISTICS")
-    print("="*80)
+    print("=" * 80)
 
-    total_predictions = len(log_df)
+    total = len(log_df)
     pending = len(log_df[log_df['status'] == 'PENDING'])
-    completed = len(log_df[log_df['status'] == 'COMPLETED'])
+    validated = len(log_df[log_df['status'] == 'VALIDATED'])
 
-    print(f"Total predictions: {total_predictions}")
+    print(f"Total predictions: {total}")
     print(f"  - Pending: {pending}")
-    print(f"  - Completed: {completed}")
+    print(f"  - Validated: {validated}")
 
-    if completed > 0:
-        completed_df = log_df[log_df['status'] == 'COMPLETED']
-        avg_error = completed_df['error_abs'].mean()
-        print(f"\nAverage Error (completed): ${avg_error:,.2f}")
+    if validated > 0:
+        val_df = log_df[log_df['status'] == 'VALIDATED']
+        inclusion_rate = val_df['would_confirm'].mean()
+        avg_overpay = val_df['overpay_sat_vb'].mean()
+        print(f"\nBlock Inclusion Accuracy: {inclusion_rate:.2%}")
+        print(f"Average Overpay: {avg_overpay:.2f} sat/vB")
 
-        # Win rate by timeframe
-        print("\nBy Timeframe:")
-        for timeframe in ['30m', '1h', '3h', '6h', '12h']:
-            tf_data = completed_df[completed_df['timeframe'] == timeframe]
-            if len(tf_data) > 0:
-                avg_err = tf_data['error_abs'].mean()
-                print(f"  {timeframe:4s}: {len(tf_data):3d} ops | Avg Error: ${avg_err:,.2f}")
+        for horizon_label in val_df['horizon_label'].unique():
+            h_data = val_df[val_df['horizon_label'] == horizon_label]
+            h_inclusion = h_data['would_confirm'].mean()
+            h_overpay = h_data['overpay_sat_vb'].mean()
+            print(f"  {horizon_label:10s}: {len(h_data):3d} validated | "
+                  f"Inclusion: {h_inclusion:.2%} | Overpay: {h_overpay:.1f} sat/vB")
+
+    # Save current snapshot for collector
+    ingestion.save_snapshot(snapshot)
 
     print("\n✅ Prediction cycle completed!")
-    print("="*80)
+    print("=" * 80)
 
 
 if __name__ == "__main__":
-    run_live_prediction()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--once', action='store_true', help='Run once and exit')
+    args = parser.parse_args()
+
+    if args.once:
+        run_live_prediction(single_run=True)
+    else:
+        run_live_prediction(single_run=True)

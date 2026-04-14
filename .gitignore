@@ -29,9 +29,13 @@ Thumbs.db
 *.hdf5
 data/raw/*
 data/processed/*
+data/snapshots/
 !data/.gitkeep
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+
+# Prediction logs
+bitacora_*.csv
 
 # Model files (DO NOT commit trained models)
 models/*.json
@@ -39,11 +43,16 @@ models/*.pkl
 models/*.joblib
 models/*.h5
 models/*.ckpt
+models/*.txt
+models/backup_*
 models/production/*
 models/experiments/*
 !models/.gitkeep
 !models/production/.gitkeep
 !models/experiments/.gitkeep
+
+# Backtest results
+backtest_results/
 
 # Logs
 logs/
@@ -114,6 +123,6 @@ results/reports/*.html
 ehthumbs.db
 Thumbs.db
 
-# YAML files
-*.yml
-*.yaml
+# NOTE: config/*.yaml is tracked — do NOT add *.yaml blanket exclusion
+# Only exclude auto-generated YAML
+!config/*.yaml
