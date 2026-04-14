@@ -160,14 +160,19 @@ def run_live_prediction(single_run: bool = False):
 
     # Load historical snapshots for feature engineering
     snapshots_df = ingestion.load_snapshots()
-    if snapshots_df is None or len(snapshots_df) < 30:
-        print("⚠️  Not enough historical data for reliable predictions")
-        print("   Need at least 30 snapshots. Run collector_daemon.py first.")
-        # Still try with whatever we have
-        if snapshots_df is None:
-            snapshots_df = pd.DataFrame([snapshot])
-        else:
-            snapshots_df = pd.concat([snapshots_df, pd.DataFrame([snapshot])], ignore_index=True)
+
+    if snapshots_df is None or len(snapshots_df) < 5:
+        print("⚠️  Not enough historical data — collecting quick snapshots...")
+        import time
+        rows = []
+        for i in range(5):
+            s = ingestion.fetch_full_snapshot()
+            if s:
+                rows.append(s)
+            if i < 4:
+                time.sleep(2)
+        snapshots_df = pd.DataFrame(rows)
+        print(f"   Collected {len(snapshots_df)} snapshots")
     else:
         # Append current snapshot
         snapshots_df = pd.concat([snapshots_df, pd.DataFrame([snapshot])], ignore_index=True)
