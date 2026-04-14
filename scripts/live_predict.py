@@ -87,7 +87,12 @@ def validate_pending_predictions(df, ingestion):
 
         # Find the block height at prediction time (approximate)
         # Use the time since prediction to estimate blocks mined
-        time_since = (datetime.now(timezone.utc) - pred_time.tz_localize('UTC')).total_seconds()
+        # Handle both tz-aware and tz-naive timestamps from CSV
+        if pred_time.tzinfo is None:
+            pred_time = pred_time.tz_localize('UTC')
+        else:
+            pred_time = pred_time.tz_convert('UTC')
+        time_since = (datetime.now(timezone.utc) - pred_time).total_seconds()
         estimated_blocks_mined = time_since / 600  # ~10 min per block
 
         # Only validate if enough blocks have passed
