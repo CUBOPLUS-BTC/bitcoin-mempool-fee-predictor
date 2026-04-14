@@ -237,9 +237,9 @@ class FeeModelInference:
         """
         from src.features import FeatureEngineer
 
-        # Create features
+        # Create features (do not drop NaNs for inference with sparse history)
         engineer = FeatureEngineer()
-        df_features = engineer.create_all_features(snapshot_df)
+        df_features = engineer.create_all_features(snapshot_df, drop_nans=False)
 
         # Get feature columns
         feature_cols = engineer.get_feature_columns(df_features)

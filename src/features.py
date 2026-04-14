@@ -40,12 +40,13 @@ class FeatureEngineer:
             logger.error(f"Failed to load config: {e}")
             raise
 
-    def create_all_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def create_all_features(self, df: pd.DataFrame, drop_nans: bool = True) -> pd.DataFrame:
         """
         Create all mempool congestion features from raw snapshots.
 
         Args:
             df: DataFrame with raw mempool snapshot data
+            drop_nans: If True, drops rows with NaNs. If False, fills them backward (useful for sparse inference).
 
         Returns:
             DataFrame with added features
@@ -86,10 +87,14 @@ class FeatureEngineer:
         # 9. Bitcoin Core RPC features (if available)
         df = self._add_rpc_features(df)
 
-        # Remove NaN rows (from rolling windows)
+        # Remove NaN rows (from rolling windows) optionally
         initial_rows = len(df)
-        df = df.dropna()
-        logger.info(f"Dropped {initial_rows - len(df)} rows with NaN values")
+        if drop_nans:
+            df = df.dropna()
+            logger.info(f"Dropped {initial_rows - len(df)} rows with NaN values")
+        else:
+            df = df.bfill().fillna(0)
+            logger.info(f"Filled NaN values (retained {len(df)}/{initial_rows} rows for inference)")
 
         logger.info(f"✓ Created {len(df.columns)} total columns ({len(self.get_feature_columns(df))} features)")
 
@@ -170,6 +175,11 @@ class FeatureEngineer:
 
     def _add_block_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add block timing and supply-side features"""
+
+        # Force numeric types for hashrate data (mempool API might return strings/objects for massive numbers)
+        for col in ['hashrate_current', 'hashrate_difficulty']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
         # Block time deviation from 10min (600s) expected
         df['block_time_deviation_3'] = df['avg_block_time_last3'] - 600.0
