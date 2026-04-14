@@ -85,7 +85,7 @@ def validate_pending_predictions(df, ingestion):
     df['would_confirm'] = df['would_confirm'].astype(object)
 
     for idx, row in pending.iterrows():
-        pred_time = pd.to_datetime(row['timestamp_pred'])
+        pred_time = pd.to_datetime(row['timestamp_pred'], format='mixed')
         horizon = int(row['horizon_blocks'])
 
         # Find the block height at prediction time (approximate)
