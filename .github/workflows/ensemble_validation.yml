@@ -37,13 +37,11 @@ jobs:
         run: |
           python scripts/validate_predictions.py
 
-      - name:  Sync with remote
+      - name:  Commit and push validated predictions
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add predictions/ensemble_predictions.csv
+          git commit -m " Validate: Updated ensemble prediction status" || exit 0
           git pull --rebase origin main || true
-          
-      - name:  Commit validated predictions
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: " Validate: Updated ensemble prediction status"
-          push_options: "--no-verify"
-          file_pattern: "predictions/ensemble_predictions.csv"
+          git push origin main --no-verify
