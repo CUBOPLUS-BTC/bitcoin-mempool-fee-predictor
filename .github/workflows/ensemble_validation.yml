@@ -41,7 +41,22 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Stash any changes, pull latest, then apply stash
+          git stash push -m "validation changes" || true
+          git pull origin main --no-rebase || true
+          
+          # Apply stash - if conflicts, prefer local changes (stash)
+          git stash pop || true
+          
+          # If there are conflicts, resolve by taking our changes
+          if git diff --name-only --diff-filter=U | grep -q "ensemble_predictions.csv"; then
+            echo "Resolving conflict in ensemble_predictions.csv - taking local changes"
+            git checkout --ours predictions/ensemble_predictions.csv
+            git add predictions/ensemble_predictions.csv
+          fi
+          
+          # Commit and push
           git add predictions/ensemble_predictions.csv
-          git commit -m " Validate: Updated ensemble prediction status" || exit 0
-          git pull --rebase origin main || true
-          git push origin main --no-verify
+          git commit -m " Validate: Updated ensemble prediction status" || echo "Nothing to commit"
+          git push origin main --no-verify || echo "Push failed, may need manual intervention"
