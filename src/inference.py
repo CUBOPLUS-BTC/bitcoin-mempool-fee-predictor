@@ -43,11 +43,13 @@ class FeeModelInference:
             return self.xgb_models[horizon]
 
         try:
-            latest_path = self.models_dir / f"production/best_fee_{horizon}block.json"
+            latest_path = self.models_dir / f"production/xgb_fee_{horizon}block.json"
 
             if not latest_path.exists():
-                logger.error(f"No XGBoost model found for {horizon}-block in production")
-                return None
+                latest_path = self.models_dir / f"production/best_fee_{horizon}block.json"
+                if not latest_path.exists():
+                    logger.error(f"No XGBoost model found for {horizon}-block in production")
+                    return None
 
             model = xgb.XGBRegressor()
             model.load_model(str(latest_path))
@@ -67,7 +69,7 @@ class FeeModelInference:
             return self.lgb_models[horizon]
 
         try:
-            latest_path = self.models_dir / f"production/best_fee_{horizon}block.txt"
+            latest_path = self.models_dir / f"production/lgbm_fee_{horizon}block.txt"
 
             if not latest_path.exists():
                 logger.debug(f"No LightGBM model for {horizon}-block in production")

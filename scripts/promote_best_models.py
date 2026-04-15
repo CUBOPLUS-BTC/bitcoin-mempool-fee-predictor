@@ -44,48 +44,31 @@ def promote_models():
         x_res = xgb_res.get(horizon)
         l_res = lgb_res.get(horizon)
 
-        best_model = None
-        best_type = None
+        # Copy XGBoost
+        if x_res:
+            xgb_src = get_latest_model_file(models_dir, 'xgb', horizon, 'json')
+            if xgb_src:
+                xgb_dst = production_dir / f"xgb_fee_{horizon}.json"
+                shutil.copy2(xgb_src, xgb_dst)
+                print(f"    Copied {Path(xgb_src).name} -> {xgb_dst.name}")
 
-        if x_res and l_res:
-            # We want highest inclusion, then lowest MAE
-            x_score = (x_res.get('block_inclusion_accuracy', 0), -x_res.get('mae', float('inf')))
-            l_score = (l_res.get('block_inclusion_accuracy', 0), -l_res.get('mae', float('inf')))
-
-            if x_score >= l_score:
-                best_type = 'xgb'
-            else:
-                best_type = 'lgbm'
-        elif x_res:
-            best_type = 'xgb'
-        elif l_res:
-            best_type = 'lgbm'
-        else:
-            print(f"  [{horizon}] No models trained.")
-            continue
-
-        print(f"  [{horizon}] Winner: {best_type.upper()}")
-        
-        # Copy to production
-        ext = 'json' if best_type == 'xgb' else 'txt'
-        src_file = get_latest_model_file(models_dir, best_type, horizon, ext)
-        
-        if src_file:
-            dst_file = production_dir / f"best_fee_{horizon}.{ext}"
-            shutil.copy2(src_file, dst_file)
-            print(f"    Copied {Path(src_file).name} -> {dst_file.name}")
-            
-            # Also save metadata so inference can know which model driver to use
-            meta_file = production_dir / f"meta_fee_{horizon}.json"
-            meta = {
-                'driver': 'xgboost' if best_type == 'xgb' else 'lightgbm',
-                'horizon': horizon,
-                'metrics': x_res if best_type == 'xgb' else l_res
-            }
-            with open(meta_file, 'w') as mf:
-                json.dump(meta, mf, indent=2)
-        else:
-            print(f"    Source model file not found for {best_type} {horizon}")
+        # Copy LightGBM
+        if l_res:
+            lgb_src = get_latest_model_file(models_dir, 'lgbm', horizon, 'txt')
+            if lgb_src:
+                lgb_dst = production_dir / f"lgbm_fee_{horizon}.txt"
+                shutil.copy2(lgb_src, lgb_dst)
+                print(f"    Copied {Path(lgb_src).name} -> {lgb_dst.name}")
+                
+        # Save metadata for both
+        meta_file = production_dir / f"meta_fee_{horizon}.json"
+        meta = {
+            'horizon': horizon,
+            'xgb_metrics': x_res,
+            'lgb_metrics': l_res
+        }
+        with open(meta_file, 'w') as mf:
+            json.dump(meta, mf, indent=2)
 
 if __name__ == '__main__':
     promote_models()

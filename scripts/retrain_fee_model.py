@@ -150,7 +150,11 @@ class FeeModelRetrainer:
         if validate:
             self._validate_and_rollback(xgb_results, lgb_results, backup_dir)
 
-        # 7. Summary
+        # 7. Generate Ensemble Predictions CSV
+        logger.info("\n Generating Ensemble Predictions CSV...")
+        self._generate_ensemble_csv(df, feature_cols, xgb_trainer, lgb_trainer)
+
+        # 8. Summary
         duration = (datetime.now() - start_time).total_seconds()
 
         logger.info("=" * 80)
@@ -171,6 +175,82 @@ class FeeModelRetrainer:
             json.dump(results, f, indent=2)
 
         return results
+
+    def _generate_ensemble_csv(self, df, feature_cols, xgb_trainer, lgb_trainer):
+        """
+        Generate ensemble predictions CSV with XGB, LGB, and ensemble predictions.
+        Ensemble uses weighted average: XGB (0.6) + LGB (0.4)
+        """
+        from sklearn.model_selection import train_test_split
+
+        for horizon in self.horizons:
+            target_col = f'target_{horizon}block_fee'
+            if target_col not in df.columns:
+                logger.warning(f"  Target column {target_col} not found, skipping ensemble CSV")
+                continue
+
+            try:
+                X = df[feature_cols].values
+                y = df[target_col].values
+
+                test_size = 0.2
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=test_size, shuffle=False
+                )
+
+                # Get predictions from both models
+                xgb_model = xgb_trainer.models.get(horizon)
+                lgb_model = lgb_trainer.models.get(horizon)
+
+                if xgb_model is None or lgb_model is None:
+                    logger.warning(f"  Missing model for {horizon}-block, skipping ensemble CSV")
+                    continue
+
+                # Generate predictions
+                xgb_pred = xgb_model.predict(X_test)
+                lgb_pred = lgb_model.predict(X_test)
+
+                # Floor at 1 sat/vB
+                xgb_pred = np.maximum(xgb_pred, 1.0)
+                lgb_pred = np.maximum(lgb_pred, 1.0)
+
+                # Calculate ensemble prediction (weighted: XGB 0.6, LGB 0.4)
+                ensemble_pred = xgb_pred * 0.6 + lgb_pred * 0.4
+                ensemble_pred = np.maximum(ensemble_pred, 1.0)
+
+                # Create DataFrame with all predictions
+                test_df = df.iloc[-len(X_test):].copy()
+                preds_df = pd.DataFrame({
+                    'actual_fee': y_test,
+                    'ensemble_fee': ensemble_pred,
+                    'ensemble_fee_rounded': np.ceil(ensemble_pred).astype(int),
+                    'xgb_fee': xgb_pred,
+                    'xgb_fee_rounded': np.ceil(xgb_pred).astype(int),
+                    'lgb_fee': lgb_pred,
+                    'lgb_fee_rounded': np.ceil(lgb_pred).astype(int),
+                    'xgb_weight': 0.6,
+                    'lgb_weight': 0.4,
+                })
+
+                # Add metadata columns
+                if 'timestamp' in test_df.columns:
+                    preds_df.insert(0, 'timestamp', test_df['timestamp'].values)
+                if 'block_height' in test_df.columns:
+                    preds_df.insert(1, 'block_height', test_df['block_height'].values)
+
+                # Add model agreement metric
+                spread = np.abs(xgb_pred - lgb_pred)
+                mean_pred = (xgb_pred + lgb_pred) / 2
+                agreement = np.maximum(0, 1.0 - (spread / (mean_pred + 1e-10)))
+                preds_df['model_agreement'] = np.round(agreement, 3)
+
+                # Save to CSV
+                preds_filename = f"ensemble_predictions_{horizon}block.csv"
+                preds_df.to_csv(self.models_dir / preds_filename, index=False)
+                logger.info(f"  ✓ Saved ensemble CSV: {preds_filename} ({len(preds_df)} rows)")
+
+            except Exception as e:
+                logger.error(f"  Failed to generate ensemble CSV for {horizon}-block: {e}")
 
     def _validate_and_rollback(self, xgb_results, lgb_results, backup_dir):
         """Validate new models and rollback if worse"""

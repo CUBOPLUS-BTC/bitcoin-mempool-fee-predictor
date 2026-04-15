@@ -127,11 +127,23 @@ class FeeModelTrainer:
             objective='reg:squarederror',
         )
 
+        # Check for existing model to continue training
+        prefix = self.config['model']['model_prefix']
+        latest_path = self.models_dir / f"production/xgb_fee_{horizon}block.json"
+        if not latest_path.exists():
+            latest_path = self.models_dir / f"{prefix}_{horizon}block_latest.json"
+
+        xgb_args = {}
+        if latest_path.exists():
+            logger.info(f"Continuing training from baseline: {latest_path.name}")
+            xgb_args['xgb_model'] = str(latest_path)
+
         # Train with early stopping
         model.fit(
             X_train, y_train,
             eval_set=[(X_test, y_test)],
-            verbose=False
+            verbose=False,
+            **xgb_args
         )
 
         logger.info(f"✓ Model trained. Best iteration: {model.best_iteration}")

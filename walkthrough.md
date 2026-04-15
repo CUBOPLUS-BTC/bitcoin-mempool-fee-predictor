@@ -85,6 +85,14 @@ graph LR
    ```
 
 4. **Set up auto-retraining** (crontab):
-   ```bash
+    ```bash
    0 * * * * cd /path/to/project && source venv/bin/activate && python scripts/auto_retrain.py
    ```
+
+## Ensemble Predictions Fixes
+
+1. **LightGBM Loading**: Fixed `inference.py` to point to the correct `.txt` extension dynamically produced by the `promote_best_models` script, ensuring both XGB and LGB models participate in the live ensemble predictions.
+2. **Individual CSV Predictions**: We split `predicted_fee_exact` into `xgb_pred` and `lgb_pred` in the `live_predict.py` generated `ensemble_predictions.csv` per your request.
+3. **Graphing**: Automatically visualizes XGBoost vs LightGBM vs Actual Realized Fee.
+
+![Models vs Actual Fee](/home/chelo/.gemini/antigravity/brain/e8f1d111-58e0-4dc6-9cfa-b65cf0916db7/artifacts/predictions_vs_actual.png)

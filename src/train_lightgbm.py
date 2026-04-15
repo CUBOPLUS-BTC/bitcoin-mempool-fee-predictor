@@ -65,10 +65,21 @@ class LightGBMFeeTrainer:
             verbose=-1,
         )
 
+        # Check for existing model to continue training
+        latest_path = self.models_dir / f"production/lgbm_fee_{horizon}block.txt"
+        if not latest_path.exists():
+            latest_path = self.models_dir / f"lgbm_fee_{horizon}block_latest.txt"
+
+        lgb_args = {}
+        if latest_path.exists():
+            logger.info(f"Continuing training from baseline: {latest_path.name}")
+            lgb_args['init_model'] = str(latest_path)
+
         model.fit(
             X_train, y_train,
             eval_set=[(X_test, y_test)],
             callbacks=[lgb.early_stopping(30, verbose=False)],
+            **lgb_args
         )
 
         logger.info(f"✓ LightGBM trained. Best iteration: {model.best_iteration_}")

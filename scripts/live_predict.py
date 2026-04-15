@@ -31,6 +31,10 @@ def load_or_create_bitacora():
     if os.path.exists(LOG_FILE):
         df = pd.read_csv(LOG_FILE)
         df['timestamp_pred'] = pd.to_datetime(df['timestamp_pred'], format='mixed')
+        if 'xgb_pred' not in df.columns:
+            df['xgb_pred'] = np.nan
+        if 'lgb_pred' not in df.columns:
+            df['lgb_pred'] = np.nan
         print(f" Loaded {len(df)} existing predictions")
         return df
     else:
@@ -45,6 +49,8 @@ def load_or_create_bitacora():
             'current_hour_fee',
             'predicted_fee_sat_vb',
             'predicted_fee_exact',
+            'xgb_pred',
+            'lgb_pred',
             'confidence_score',
             'models_used',
             'actual_fee',
@@ -127,6 +133,8 @@ def run_live_prediction(single_run: bool = False):
 
     for label, pred in response.get('fee_predictions', {}).items():
         horizon = pred['horizon_blocks']
+        ind_preds = pred.get('individual_predictions', {})
+
         prediction = {
             'timestamp_pred': timestamp_pred.isoformat(),
             'horizon_blocks': horizon,
@@ -138,6 +146,8 @@ def run_live_prediction(single_run: bool = False):
             'current_hour_fee': snapshot.get('fee_hour', 0),
             'predicted_fee_sat_vb': pred['predicted_fee_sat_vb'],
             'predicted_fee_exact': pred['predicted_fee_exact'],
+            'xgb_pred': ind_preds.get('xgb', np.nan),
+            'lgb_pred': ind_preds.get('lgb', np.nan),
             'confidence_score': pred['confidence_score'],
             'models_used': ','.join(pred.get('models_used', [])),
             'actual_fee': np.nan,
@@ -148,9 +158,10 @@ def run_live_prediction(single_run: bool = False):
         new_predictions.append(prediction)
 
         ci = pred['confidence_interval']
-        print(f"   {label:10s}: {pred['predicted_fee_sat_vb']:3d} sat/vB "
-              f"[{ci[0]}-{ci[1]}] ({pred['priority']}) "
-              f"conf={pred['confidence_score']:.2f}")
+        xgb_str = f"XGB={int(np.ceil(xgb_fee))}" if not np.isnan(xgb_fee) else "XGB=N/A"
+        lgb_str = f"LGB={int(np.ceil(lgb_fee))}" if not np.isnan(lgb_fee) else "LGB=N/A"
+        print(f"   {label:10s}: {ensemble_fee:3d} sat/vB (ENS) [{ci[0]}-{ci[1]}] ({pred['priority']}) "
+              f"conf={pred['confidence_score']:.2f} | {xgb_str} | {lgb_str}")
 
     # Recommendation
     print(f"\n Recommendation: {response.get('recommendation', 'N/A')}")
