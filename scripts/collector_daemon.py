@@ -233,7 +233,8 @@ def main():
     parser = argparse.ArgumentParser(description="Mempool Collector Daemon")
     parser.add_argument('--config', type=str, default='config/config.yaml')
     parser.add_argument('--interval', type=int, default=None, help='Override polling interval (seconds)')
-    parser.add_argument('--test-run', action='store_true', help='Collect 5 snapshots and exit')
+    parser.add_argument('--test-run', action='store_true', help='Collect N snapshots and exit (use with --max-snapshots)')
+    parser.add_argument('--max-snapshots', type=int, default=5, help='Number of snapshots to collect in test-run mode')
     parser.add_argument('--consolidate', action='store_true', help='Merge JSON snapshots to Parquet')
 
     args = parser.parse_args()
