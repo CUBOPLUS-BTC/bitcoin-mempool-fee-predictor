@@ -43,10 +43,10 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name:  Collect mempool data (40 snapshots, ~5 min)
+      - name:  Collect mempool data (80 snapshots, ~10 min)
         run: |
           echo " Collecting mempool snapshots for retraining..."
-          python scripts/collector_daemon.py --interval 8 --test-run
+          python scripts/collector_daemon.py --interval 8 --test-run --max-snapshots 80
           echo " Collection complete"
 
       - name:  Consolidate snapshot data
@@ -70,6 +70,15 @@ jobs:
             VALIDATE_FLAG="--no-validate"
           fi
           python scripts/retrain_fee_model.py $VALIDATE_FLAG
+
+      - name:  Inspect logs on failure
+        if: failure()
+        run: |
+          echo "--- RETRAIN LOGS ---"
+          ls -lt logs/ | head -n 5
+          cat logs/retrain_*.log | tail -n 50
+          echo "--- DATA DIR ---"
+          ls -R data/snapshots/
 
       - name:  Select and Promote Best Models
         run: |

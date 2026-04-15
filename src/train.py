@@ -135,8 +135,20 @@ class FeeModelTrainer:
 
         xgb_args = {}
         if latest_path.exists():
-            logger.info(f"Continuing training from baseline: {latest_path.name}")
-            xgb_args['xgb_model'] = str(latest_path)
+            try:
+                # Validate feature count before continuing
+                baseline_model = xgb.XGBRegressor()
+                baseline_model.load_model(str(latest_path))
+                if hasattr(baseline_model, 'n_features_in_') and baseline_model.n_features_in_ != X_train.shape[1]:
+                    logger.warning(
+                        f"Feature mismatch: baseline={baseline_model.n_features_in_}, new={X_train.shape[1]}. "
+                        "Starting training from scratch."
+                    )
+                else:
+                    logger.info(f"Continuing training from baseline: {latest_path.name}")
+                    xgb_args['xgb_model'] = str(latest_path)
+            except Exception as e:
+                logger.warning(f"Could not load baseline model {latest_path.name}: {e}. Training from scratch.")
 
         # Train with early stopping
         model.fit(

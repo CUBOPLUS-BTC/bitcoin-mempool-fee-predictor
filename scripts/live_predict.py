@@ -158,6 +158,10 @@ def run_live_prediction(single_run: bool = False):
         new_predictions.append(prediction)
 
         ci = pred['confidence_interval']
+        ensemble_fee = pred['predicted_fee_sat_vb']
+        xgb_fee = ind_preds.get('xgb', np.nan)
+        lgb_fee = ind_preds.get('lgb', np.nan)
+
         xgb_str = f"XGB={int(np.ceil(xgb_fee))}" if not np.isnan(xgb_fee) else "XGB=N/A"
         lgb_str = f"LGB={int(np.ceil(lgb_fee))}" if not np.isnan(lgb_fee) else "LGB=N/A"
         print(f"   {label:10s}: {ensemble_fee:3d} sat/vB (ENS) [{ci[0]}-{ci[1]}] ({pred['priority']}) "

@@ -69,6 +69,15 @@ jobs:
         run: |
           python scripts/live_predict.py --once
 
+      - name:  Inspect logs on failure
+        if: failure()
+        run: |
+          echo "--- MODELS ---"
+          ls -R models/production/
+          echo "--- PREDICTIONS ---"
+          ls -la predictions/
+          tail -n 20 predictions/ensemble_predictions.csv || echo "No predictions yet"
+
       - name:  Sync with remote
         run: |
           git pull --rebase origin main || true

@@ -253,7 +253,7 @@ def main():
     if args.consolidate:
         daemon.consolidate_to_parquet()
     elif args.test_run:
-        daemon.run(interval=args.interval or 8, max_snapshots=40)
+        daemon.run(interval=args.interval or 8, max_snapshots=args.max_snapshots)
     else:
         daemon.run(interval=args.interval)
 

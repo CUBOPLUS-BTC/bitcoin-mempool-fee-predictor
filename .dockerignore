@@ -1,0 +1,41 @@
+# Build context optimization
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.db/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Sensitive info
+.env
+*.key
+*.pem
+
+# Data and Models (Handled via volumes)
+data/
+models/
+logs/
+predictions/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Misc
+.DS_Store
+*.md
+LICENSE
+docs/
+tests/
