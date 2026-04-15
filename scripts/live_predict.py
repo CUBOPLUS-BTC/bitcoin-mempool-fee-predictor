@@ -31,10 +31,16 @@ def load_or_create_bitacora():
     if os.path.exists(LOG_FILE):
         df = pd.read_csv(LOG_FILE)
         df['timestamp_pred'] = pd.to_datetime(df['timestamp_pred'], format='mixed')
-        if 'xgb_pred' not in df.columns:
-            df['xgb_pred'] = np.nan
-        if 'lgb_pred' not in df.columns:
-            df['lgb_pred'] = np.nan
+        # Migrate old column names to new schema
+        if 'predicted_fee_sat_vb' in df.columns and 'ensemble_fee_sat_vb' not in df.columns:
+            df['ensemble_fee_sat_vb'] = df['predicted_fee_sat_vb']
+            df['ensemble_fee_exact'] = df['predicted_fee_exact']
+        if 'xgb_pred' in df.columns and 'xgb_fee_sat_vb' not in df.columns:
+            df['xgb_fee_sat_vb'] = df['xgb_pred'].apply(lambda x: int(np.ceil(x)) if pd.notna(x) else None)
+            df['xgb_fee_exact'] = df['xgb_pred']
+        if 'lgb_pred' in df.columns and 'lgb_fee_sat_vb' not in df.columns:
+            df['lgb_fee_sat_vb'] = df['lgb_pred'].apply(lambda x: int(np.ceil(x)) if pd.notna(x) else None)
+            df['lgb_fee_exact'] = df['lgb_pred']
         print(f" Loaded {len(df)} existing predictions")
         return df
     else:
@@ -47,10 +53,12 @@ def load_or_create_bitacora():
             'current_fastest_fee',
             'current_halfhour_fee',
             'current_hour_fee',
-            'predicted_fee_sat_vb',
-            'predicted_fee_exact',
-            'xgb_pred',
-            'lgb_pred',
+            'ensemble_fee_sat_vb',
+            'ensemble_fee_exact',
+            'xgb_fee_sat_vb',
+            'xgb_fee_exact',
+            'lgb_fee_sat_vb',
+            'lgb_fee_exact',
             'confidence_score',
             'models_used',
             'actual_fee',
@@ -135,6 +143,11 @@ def run_live_prediction(single_run: bool = False):
         horizon = pred['horizon_blocks']
         ind_preds = pred.get('individual_predictions', {})
 
+        # Get individual predictions
+        xgb_fee = ind_preds.get('xgb', np.nan)
+        lgb_fee = ind_preds.get('lgb', np.nan)
+        ensemble_fee = pred['predicted_fee_sat_vb']
+
         prediction = {
             'timestamp_pred': timestamp_pred.isoformat(),
             'horizon_blocks': horizon,
@@ -144,10 +157,12 @@ def run_live_prediction(single_run: bool = False):
             'current_fastest_fee': snapshot.get('fee_fastest', 0),
             'current_halfhour_fee': snapshot.get('fee_half_hour', 0),
             'current_hour_fee': snapshot.get('fee_hour', 0),
-            'predicted_fee_sat_vb': pred['predicted_fee_sat_vb'],
-            'predicted_fee_exact': pred['predicted_fee_exact'],
-            'xgb_pred': ind_preds.get('xgb', np.nan),
-            'lgb_pred': ind_preds.get('lgb', np.nan),
+            'ensemble_fee_sat_vb': ensemble_fee,
+            'ensemble_fee_exact': pred['predicted_fee_exact'],
+            'xgb_fee_sat_vb': int(np.ceil(xgb_fee)) if not np.isnan(xgb_fee) else None,
+            'xgb_fee_exact': round(xgb_fee, 2) if not np.isnan(xgb_fee) else None,
+            'lgb_fee_sat_vb': int(np.ceil(lgb_fee)) if not np.isnan(lgb_fee) else None,
+            'lgb_fee_exact': round(lgb_fee, 2) if not np.isnan(lgb_fee) else None,
             'confidence_score': pred['confidence_score'],
             'models_used': ','.join(pred.get('models_used', [])),
             'actual_fee': np.nan,
@@ -158,9 +173,6 @@ def run_live_prediction(single_run: bool = False):
         new_predictions.append(prediction)
 
         ci = pred['confidence_interval']
-        ensemble_fee = pred['predicted_fee_sat_vb']
-        xgb_fee = ind_preds.get('xgb', np.nan)
-        lgb_fee = ind_preds.get('lgb', np.nan)
 
         xgb_str = f"XGB={int(np.ceil(xgb_fee))}" if not np.isnan(xgb_fee) else "XGB=N/A"
         lgb_str = f"LGB={int(np.ceil(lgb_fee))}" if not np.isnan(lgb_fee) else "LGB=N/A"
