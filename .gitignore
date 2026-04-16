@@ -136,3 +136,9 @@ Thumbs.db
 # NOTE: config/*.yaml is tracked — do NOT add *.yaml blanket exclusion
 # Only exclude auto-generated YAML
 !config/*.yaml
+
+# Frontend
+node_modules/
+frontend-react/node_modules/
+frontend-react/dist/
+*.local
