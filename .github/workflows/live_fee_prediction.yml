@@ -14,23 +14,24 @@ concurrency:
 
 permissions:
   contents: write
+  actions: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   predict:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Pinned version
     timeout-minutes: 10
 
     steps:
       - name:  Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name:  Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
         with:
-          python-version: '3.11'
+          python-version: '3.11.11'  # Pinned version
           cache: 'pip'
 
       - name:  Install dependencies
@@ -78,13 +79,50 @@ jobs:
           ls -la predictions/
           tail -n 20 predictions/ensemble_predictions.csv || echo "No predictions yet"
 
-      - name:  Sync with remote
+      - name:  Commit and push predictions
         run: |
-          git pull --rebase origin main || true
-
-      - name:  Commit predictions
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: " Auto-update: Fee predictions"
-          push_options: "--no-verify"
-          file_pattern: "predictions/ensemble_predictions.csv"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Add prediction files
+          git add predictions/ensemble_predictions.csv
+          
+          # Check if there are changes to commit
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          # Commit locally
+          git commit -m " Auto-update: Fee predictions" || true
+          
+          # Stash any uncommitted changes
+          git stash push -m "uncommitted changes" || true
+          
+          # Pull latest from remote with rebase
+          git pull origin main --rebase || true
+          
+          # Apply stash if it exists
+          git stash pop || true
+          
+          # If there are conflicts in CSV files, resolve by taking our changes
+          if git diff --name-only --diff-filter=U | grep -q "\.csv$"; then
+            echo "Resolving conflicts in CSV files - taking local changes"
+            git diff --name-only --diff-filter=U | grep "\.csv$" | while read file; do
+              git checkout --ours "$file" || true
+              git add "$file" || true
+            done
+            # Commit the resolved conflicts
+            git commit -m " Auto-update: Fee predictions (with merge conflict resolution)" || true
+          fi
+          
+          # Push to remote
+          git push origin main --no-verify || {
+            echo "Push failed, retrying..."
+            git pull origin main --rebase && git push origin main --no-verify || {
+              echo "All push attempts failed. Manual intervention required."
+              exit 1
+            }
+          }
+          
+          echo "Successfully committed and pushed predictions"

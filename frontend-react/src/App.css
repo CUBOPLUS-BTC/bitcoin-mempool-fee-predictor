@@ -1,0 +1,43 @@
+/* Custom scrollbar */
+.scrolling-hex::-webkit-scrollbar {
+  width: 0px;
+}
+
+/* HUD Border styling */
+.hud-border {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 0 15px rgba(255, 255, 255, 0.05);
+}
+
+/* Blink animation */
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.animate-blink {
+  animation: blink 1s step-start infinite;
+}
+
+/* Glow effects */
+.glow-blue {
+  text-shadow: 0 0 8px #3d5afe;
+}
+
+.glow-yellow {
+  text-shadow: 0 0 8px #f5d41f;
+}
+
+.glow-orange {
+  text-shadow: 0 0 8px #f7931a;
+}
+
+/* Neon green text */
+.text-neon-green {
+  color: #00ff41;
+}
+
+/* Selection styling */
+::selection {
+  background: white;
+  color: black;
+}

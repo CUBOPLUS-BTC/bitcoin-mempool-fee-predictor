@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --mempool-blue: #3d5afe;
+  --mempool-yellow: #f5d41f;
+  --mempool-orange: #f7931a;
+  --neon-green: #00ff41;
+  --terminal-bg: #050505;
+  --terminal-text: #e0e0e0;
+}
+
+body {
+  font-family: 'JetBrains Mono', monospace;
+  background-color: var(--terminal-bg);
+  color: var(--terminal-text);
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+/* Import JetBrains Mono from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');

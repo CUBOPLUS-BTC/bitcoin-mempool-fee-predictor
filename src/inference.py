@@ -4,6 +4,7 @@ Loads trained models and makes fee predictions for block inclusion.
 Replaces the previous price prediction inference.
 """
 
+import os
 import xgboost as xgb
 import lightgbm as lgb
 import pandas as pd
@@ -13,6 +14,8 @@ import yaml
 from loguru import logger
 from typing import Dict, List, Optional
 from datetime import datetime
+
+from src.model_integrity import ModelIntegrityChecker, create_integrity_checker, ModelIntegrityError
 
 
 class FeeModelInference:
@@ -28,6 +31,8 @@ class FeeModelInference:
         self.xgb_models = {}
         self.lgb_models = {}
         self.model_timestamps = {}
+        # Initialize integrity checker
+        self.integrity_checker = create_integrity_checker(config_path)
 
     def _load_config(self, config_path: str) -> dict:
         try:
@@ -50,6 +55,16 @@ class FeeModelInference:
                 if not latest_path.exists():
                     logger.error(f"No XGBoost model found for {horizon}-block in production")
                     return None
+
+            # Verify model integrity before loading
+            try:
+                self.integrity_checker.verify(latest_path)
+            except ModelIntegrityError as e:
+                logger.error(f"Model integrity check failed: {e}")
+                # In strict mode, don't load the model
+                # For now, log and continue (can be changed to raise)
+                if os.getenv("STRICT_MODEL_INTEGRITY", "false").lower() == "true":
+                    raise
 
             model = xgb.XGBRegressor()
             model.load_model(str(latest_path))
@@ -74,6 +89,14 @@ class FeeModelInference:
             if not latest_path.exists():
                 logger.debug(f"No LightGBM model for {horizon}-block in production")
                 return None
+
+            # Verify model integrity before loading
+            try:
+                self.integrity_checker.verify(latest_path)
+            except ModelIntegrityError as e:
+                logger.error(f"Model integrity check failed: {e}")
+                if os.getenv("STRICT_MODEL_INTEGRITY", "false").lower() == "true":
+                    raise
 
             model = lgb.Booster(model_file=str(latest_path))
             self.lgb_models[horizon] = model

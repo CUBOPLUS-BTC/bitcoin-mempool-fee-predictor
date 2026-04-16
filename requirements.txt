@@ -16,6 +16,10 @@ fastapi>=0.103.1
 uvicorn[standard]>=0.23.2
 pydantic>=2.3.0
 
+# Security & Rate Limiting
+slowapi>=0.1.9
+redis>=4.6.0  # Optional: for distributed rate limiting
+
 # Configuration Management
 pyyaml>=6.0.1
 

@@ -4,7 +4,7 @@ Bitcoin Mempool Fee Prediction API
 Provides real-time fee predictions for block inclusion.
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -12,13 +12,19 @@ import uvicorn
 from datetime import datetime
 import logging
 import sys
+import os
 from pathlib import Path
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.ingestion import MempoolDataIngestion
 from src.inference import FeeModelInference
+from api.security import verify_api_key, SecurityLogger
+from api.middleware.security_headers import SecurityHeadersMiddleware
 
 # Configure logging
 logging.basicConfig(
@@ -65,14 +71,28 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS middleware
+# Security headers middleware
+app.add_middleware(SecurityHeadersMiddleware)
+
+# CORS middleware - restrict to specific origins
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET"],  # Only GET needed for this API
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+    max_age=600,
 )
+
+# Rate limiting
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # ============================================================================
@@ -110,9 +130,12 @@ async def health_check():
 
 
 @app.get("/fees/predict", tags=["Fee Prediction"])
+@limiter.limit("30/minute")
 async def predict_fees(
+    request: Request,
     background_tasks: BackgroundTasks,
     use_ensemble: bool = Query(True, description="Use XGBoost + LightGBM ensemble"),
+    api_key: str = Depends(verify_api_key),
 ):
     """
     Predict optimal fee rates for block inclusion.
@@ -164,7 +187,9 @@ async def predict_fees(
         raise
     except Exception as e:
         logger.error(f"Prediction error: {e}")
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+        # Don't expose internal error details in production
+        error_msg = "Prediction failed" if os.getenv("ENV", "production") == "production" else f"Prediction failed: {str(e)}"
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 @app.get("/fees/current", tags=["Fee Prediction"])
@@ -205,8 +230,11 @@ async def get_current_fees():
 
 
 @app.get("/fees/history", tags=["Fee Prediction"])
+@limiter.limit("10/minute")
 async def get_prediction_history(
-    limit: int = Query(50, ge=1, le=500, description="Number of records to return")
+    request: Request,
+    limit: int = Query(50, ge=1, le=100, description="Number of records to return"),
+    api_key: str = Depends(verify_api_key),
 ):
     """
     Get history of fee predictions and their validation results.
@@ -239,11 +267,17 @@ async def get_prediction_history(
 
     except Exception as e:
         logger.error(f"History error: {e}")
-        raise HTTPException(status_code=500, detail="Error fetching prediction history")
+        # Don't expose internal error details
+        error_msg = "Error fetching prediction history" if os.getenv("ENV", "production") == "production" else f"Error fetching prediction history: {str(e)}"
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 @app.get("/models", tags=["Models"])
-async def list_models():
+@limiter.limit("20/minute")
+async def list_models(
+    request: Request,
+    api_key: str = Depends(verify_api_key),
+):
     """List all loaded model information"""
     return inference.get_loaded_models_info() if inference else {"error": "Models not loaded"}
 
@@ -273,10 +307,19 @@ async def get_mempool_blocks():
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
+    # Sanitize error messages in production
+    detail = exc.detail
+    if os.getenv("ENV", "production") == "production":
+        # Remove potentially sensitive information from error messages
+        sensitive_patterns = ["traceback", "stack", "file", "line", "module"]
+        detail_lower = str(detail).lower()
+        if any(pattern in detail_lower for pattern in sensitive_patterns):
+            detail = "Request failed"
+    
     return JSONResponse(
         status_code=exc.status_code,
         content={
-            "error": exc.detail,
+            "error": detail,
             "timestamp": datetime.now().isoformat()
         }
     )
@@ -284,10 +327,11 @@ async def http_exception_handler(request, exc):
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
     logger.error(f"Unhandled exception: {exc}")
+    # Never expose exception details in production
     return JSONResponse(
         status_code=500,
         content={
-            "error": "Internal server error",
+            "error": "Internal server error" if os.getenv("ENV", "production") == "production" else str(exc),
             "timestamp": datetime.now().isoformat()
         }
     )
@@ -298,10 +342,13 @@ async def general_exception_handler(request, exc):
 # ============================================================================
 
 if __name__ == "__main__":
+    # Security: Never enable reload in production
+    is_development = os.getenv("ENV", "production") == "development"
+    
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=1234,
-        reload=True,
-        log_level="info"
+        host=os.getenv("API_HOST", "0.0.0.0"),
+        port=int(os.getenv("API_PORT", "8000")),
+        reload=is_development,
+        log_level=os.getenv("LOG_LEVEL", "info")
     )
