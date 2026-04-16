@@ -67,6 +67,17 @@
 - Headers de seguridad en responses
 - Sanitización de inputs en JavaScript
 
+### 🟡 MEDIA - Frontend npm Vulnerabilities
+**Estado:** ✅ CORREGIDO
+
+- 8 vulnerabilidades (2 moderate, 6 high) en dependencias npm
+- `vite`: ^5.0.8 → ^6.0.7
+- `lucide-react`: ^1.8.0 → ^0.468.0
+- `react` + `react-dom`: ^18.2.0 → ^18.3.1
+- `eslint`: ^8.55.0 → ^9.17.0
+- `@typescript-eslint/*`: ^6.14.0 → ^8.18.2
+- Override: `esbuild`: ^0.24.2
+
 ## Archivos Nuevos/Modificados
 
 ### Nuevos
@@ -83,6 +94,7 @@
 - `.github/workflows/*.yml` - Versiones pinnadas, permisos
 - `requirements.txt` - Agregado slowapi
 - `frontend/index.html` - CSP, sanitización
+- `frontend-react/package.json` - Dependencias actualizadas
 - `frontend-react/src/hooks/useApi.ts` - API key, validación
 
 ## Configuración Requerida
