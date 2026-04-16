@@ -4,6 +4,7 @@
 ![XGBoost](https://img.shields.io/badge/XGBoost-1.7-orange)
 ![LightGBM](https://img.shields.io/badge/LightGBM-4.0-green)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen)
+![Security](https://img.shields.io/badge/Security-8.5%2F10-success)
 
 ##  Overview
 
@@ -17,14 +18,17 @@ This framework replaces traditional static fee estimation with machine learning 
 -  **Dual Model Ensemble**: XGBoost + LightGBM with conservative bias
 -  **Cost Optimization**: Save vs always paying the highest fee
 -  **Auto-Retraining**: Hourly model updates with validation
--  **Live API**: FastAPI on port 1234
+-  **Live API**: FastAPI on port 8000 (with security hardening)
+-  **Security Hardened**: API key auth, rate limiting, CSP, model integrity checks
 
 ##  Tech Stack
 
 - **Core:** Python 3.9+
 - **ML/AI:** XGBoost, LightGBM, Scikit-learn
 - **Data Processing:** Pandas, NumPy, PyArrow
-- **API:** FastAPI (model serving on port 1234)
+- **API:** FastAPI + Uvicorn + SlowAPI (rate limiting)
+- **Security:** API key auth, CORS, CSP, security headers, model integrity
+- **Frontend:** React + TypeScript + Vite (with security patches)
 - **Data Sources:** Mempool.space API + Bitcoin Core RPC
 
 ##  Architecture
@@ -43,10 +47,12 @@ Bitcoin Core RPC ──┘      (every 2 min)     (congestion metrics)   (XGBoos
 | **Feature Engineering** | `src/features.py` | Creates congestion, fee, block timing features |
 | **XGBoost Training** | `src/train.py` | Trains multi-horizon XGBoost models |
 | **LightGBM Training** | `src/train_lightgbm.py` | Trains LightGBM for ensemble |
-| **Inference** | `src/inference.py` | Loads models, makes fee predictions |
+| **Inference** | `src/inference.py` | Loads models with SHA-256 integrity verification |
 | **Ensemble** | `src/ensemble.py` | Combines XGBoost + LightGBM predictions |
 | **Backtesting** | `src/backtest.py` | Tests predictions against confirmed blocks |
-| **API Server** | `api/main.py` | FastAPI server for real-time predictions |
+| **API Server** | `api/main.py` | FastAPI with auth, rate limiting, security headers |
+| **Security Module** | `api/security.py` | API key authentication |
+| **Model Integrity** | `src/model_integrity.py` | SHA-256 hash verification for ML models |
 | **Collector Daemon** | `scripts/collector_daemon.py` | 24/7 mempool data collection |
 | **Auto Retrain** | `scripts/auto_retrain.py` | Hourly model retraining pipeline |
 
@@ -99,12 +105,23 @@ python -m src.train_lightgbm --all
 
 ### 6. Start the API
 
+**Development (no API key required):**
 ```bash
 cd api
-uvicorn main:app --host 0.0.0.0 --port 1234 --reload
+ENV=development python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Access the API documentation at: `http://localhost:1234/docs`
+**Production (API key required):**
+```bash
+# Set required environment variables
+export API_KEY=$(openssl rand -hex 32)
+export ENV=production
+export ALLOWED_ORIGINS=https://yourdomain.com,http://localhost:5173
+
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
+
+Access the API documentation at: `http://localhost:8000/docs` (development only)
 
 ### 7. Live Predictions
 
@@ -114,14 +131,21 @@ python scripts/live_predict.py --once
 
 ##  API Endpoints
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/fees/predict` | ML fee predictions for all horizons |
-| `GET` | `/fees/current` | Raw current fees from mempool.space |
-| `GET` | `/fees/history` | Prediction history with validation stats |
-| `GET` | `/mempool/blocks` | Projected mempool blocks |
-| `GET` | `/health` | Service health check |
-| `GET` | `/models` | Loaded model information |
+**Authentication:** Most endpoints require `X-API-Key` header (except `/health` and `/`).
+
+| Method | Endpoint | Auth | Rate Limit | Description |
+|---|---|---|---|---|
+| `GET` | `/fees/predict` | Required | 30/min | ML fee predictions for all horizons |
+| `GET` | `/fees/current` | Optional | - | Raw current fees from mempool.space |
+| `GET` | `/fees/history` | Required | 10/min | Prediction history (max 100 records) |
+| `GET` | `/mempool/blocks` | Optional | - | Projected mempool blocks |
+| `GET` | `/health` | None | - | Service health check |
+| `GET` | `/models` | Required | 20/min | Loaded model information |
+
+**Example with API Key:**
+```bash
+curl -H "X-API-Key: your-api-key" http://localhost:8000/fees/predict
+```
 
 ### Example: Fee Prediction Response
 
@@ -181,6 +205,56 @@ python scripts/collector_daemon.py
 # 0 * * * * cd /path/to/project && python scripts/auto_retrain.py
 python scripts/auto_retrain.py
 ```
+
+##  Security
+
+This project has undergone comprehensive security hardening following OWASP Top 10 guidelines. **Security Score: 8.5/10**
+
+### Implemented Security Features
+
+| Feature | Implementation | Status |
+|---|---|---|
+| **API Authentication** | API Key (`X-API-Key` header) | ✅ Active |
+| **Rate Limiting** | 30/10/20 req/min per endpoint | ✅ Active |
+| **CORS** | Whitelist-based origin validation | ✅ Active |
+| **Security Headers** | 7 headers including CSP, HSTS | ✅ Active |
+| **Model Integrity** | SHA-256 hash verification | ✅ Active |
+| **Error Sanitization** | No internal details exposed | ✅ Active |
+| **Dependency Audit** | pip-audit + npm audit | ✅ Active |
+
+### Environment Configuration
+
+Copy `.env.example` to `.env` and configure:
+
+```bash
+# Required for production
+API_KEY=$(openssl rand -hex 32)
+ENV=production
+ALLOWED_ORIGINS=https://yourdomain.com,http://localhost:5173
+
+# Optional: Strict model integrity
+STRICT_MODEL_INTEGRITY=true
+MODEL_HASHES_FILE=models/hashes.json
+```
+
+### Verification Scripts
+
+```bash
+# Verify API security patches
+python scripts/verify_security_patches.py
+
+# Check frontend dependencies
+python scripts/check_frontend_security.py
+
+# Generate model hashes
+python scripts/generate_model_hashes.py
+```
+
+### Pentest Reports
+
+- [Initial Pentest Report](PENTEST_TECNICO_bitcoin-mempool-fee-predictor.md)
+- [Post-Patch Verification](PENTEST_VERIFICACION_POST_PATCH.md)
+- [Security Patch Notes](SECURITY_PATCH_NOTES.md)
 
 ##  Data Sources
 
