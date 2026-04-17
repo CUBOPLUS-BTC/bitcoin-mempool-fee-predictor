@@ -1,21 +1,36 @@
 {
-  "driver": "xgboost",
   "horizon": "1block",
-  "metrics": {
+  "xgb_metrics": {
     "horizon_blocks": 1,
-    "mse": 0.00018765246762995086,
-    "rmse": 0.013698630136986358,
-    "mae": 0.013698630136986356,
+    "mse": 0.01284461112148468,
+    "rmse": 0.11333406867083119,
+    "mae": 0.1035321553548177,
     "r2": 0.0,
-    "block_inclusion_accuracy": 0.0,
-    "avg_overpay_sat_vb": 0.0,
+    "block_inclusion_accuracy": 0.16666666666666666,
+    "avg_overpay_sat_vb": 0.0007961591084798177,
     "median_overpay_sat_vb": 0.0,
-    "avg_underpay_sat_vb": 0.013698630136986356,
-    "overpay_mape": 0.0,
+    "avg_underpay_sat_vb": 0.10273599624633789,
+    "overpay_mape": 0.013269318474663628,
     "within_10pct": 1.0,
     "within_20pct": 1.0,
     "within_50pct": 1.0,
-    "asymmetric_loss": 0.00013135672734096557,
-    "mape": 1.3513513513513564
+    "asymmetric_loss": 0.008989706498656838,
+    "mape": 1.7255359225802953
+  },
+  "lgb_metrics": {
+    "horizon_blocks": 1,
+    "model_type": "lightgbm",
+    "mse": 25.0,
+    "rmse": 5.0,
+    "mae": 5.0,
+    "r2": 0.0,
+    "block_inclusion_accuracy": 0.0,
+    "avg_overpay_sat_vb": 0.0,
+    "avg_underpay_sat_vb": 5.0,
+    "within_10pct": 0.0,
+    "within_20pct": 0.0,
+    "within_50pct": 0.0,
+    "asymmetric_loss": 17.5,
+    "mape": 83.33333333333334
   }
 }
