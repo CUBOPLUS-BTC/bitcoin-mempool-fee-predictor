@@ -90,13 +90,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # Add all model and prediction files
+          # Add all model and prediction files (use -f for logs since it's gitignored)
           git add models/xgb_fee_*block_latest.json \
                   models/lgbm_fee_*block_latest.txt \
                   models/production/* \
                   models/*predictions*.csv \
-                  models/training_summary_*.json \
-                  logs/retrain_results_*.json
+                  models/training_summary_*.json || true
+          git add -f logs/retrain_results_*.json || true
           
           # Check if there are changes to commit
           if git diff --cached --quiet; then

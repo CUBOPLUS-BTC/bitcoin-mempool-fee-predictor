@@ -84,8 +84,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # Add prediction files
-          git add predictions/ensemble_predictions.csv
+          # Add prediction files (use || true in case file doesn't exist yet)
+          git add predictions/ensemble_predictions.csv || true
           
           # Check if there are changes to commit
           if git diff --cached --quiet; then
