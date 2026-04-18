@@ -18,7 +18,8 @@ pydantic>=2.3.0
 
 # Security & Rate Limiting
 slowapi>=0.1.9
-redis>=4.6.0  # Optional: for distributed rate limiting
+redis>=4.6.0  # For distributed rate limiting and API key caching
+cryptography>=41.0.0  # For data encryption at rest (Fernet)
 
 # Configuration Management
 pyyaml>=6.0.1

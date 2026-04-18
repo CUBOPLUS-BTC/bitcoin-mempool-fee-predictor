@@ -6,6 +6,39 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.1.1] - 2026-04-18
+
+### 🔒 Security Hardening (Post-Pentest)
+
+#### Added
+- **Hide Swagger/ReDoc in Production** (`api/main.py`)
+  - MEDIA-R01: Conditional docs based on ENV variable
+  - `/docs`, `/redoc`, `/openapi.json` return 404 in production
+  - Reduces attack surface exposure
+
+- **Multi-Tenant API Key Management** (`api/multi_key_auth.py`)
+  - A01:2021: B2B-ready API key system
+  - Redis caching for high-performance key validation
+  - Per-client rate limiting and permissions
+  - Instant key revocation without affecting other clients
+  - Key rotation support
+
+- **Data Encryption at Rest** (`src/data_encryption.py`)
+  - A02:2021: Fernet (AES-128-CBC + HMAC) encryption
+  - PBKDF2 key derivation with 100k iterations
+  - Automatic `.encrypted` file extension
+  - Batch encrypt/decrypt for directories
+  - Key rotation capability
+
+#### Dependencies
+- `redis>=4.6.0` - For distributed caching
+- `cryptography>=41.0.0` - For data encryption
+
+#### Documentation
+- `docs/security_hardening_v2.1.1.md` - Complete security guide
+
+---
+
 ## [2.1.0] - 2026-04-18
 
 ### 🧠 Model Explainability & Transparency

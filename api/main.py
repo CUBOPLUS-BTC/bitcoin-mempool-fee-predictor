@@ -23,7 +23,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.ingestion import MempoolDataIngestion
 from src.inference import FeeModelInference
-from api.security import verify_api_key, SecurityLogger
+from api.security import SecurityLogger
+from api.multi_key_auth import auth_manager, APIKeyInfo
 from api.middleware.security_headers import SecurityHeadersMiddleware
 
 # Configure logging
@@ -47,7 +48,8 @@ async def lifespan(app: FastAPI):
     global ingestion, inference
 
     # Startup
-    logger.info(" Starting Mempool Fee Prediction API...")
+    env = os.getenv("ENV", "development")
+    logger.info(f" Starting Mempool Fee Prediction API in {env} mode...")
     ingestion = MempoolDataIngestion()
     inference = FeeModelInference()
     inference.load_all_models()
@@ -59,6 +61,11 @@ async def lifespan(app: FastAPI):
     logger.info(" Shutting down Fee Prediction API")
 
 
+# Security: Conditionally disable docs in production
+ENV = os.getenv("ENV", "development")
+DOCS_URL = "/docs" if ENV != "production" else None
+REDOC_URL = "/redoc" if ENV != "production" else None
+
 # Create FastAPI app
 app = FastAPI(
     title="Bitcoin Mempool Fee Prediction API",
@@ -67,8 +74,9 @@ app = FastAPI(
                 "your transaction confirmed in the next 1, 3, or 6 blocks.",
     version="2.0.0",
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc"
+    docs_url=DOCS_URL,
+    redoc_url=REDOC_URL,
+    openapi_url="/openapi.json" if ENV != "production" else None,
 )
 
 # Security headers middleware
@@ -135,7 +143,7 @@ async def predict_fees(
     request: Request,
     background_tasks: BackgroundTasks,
     use_ensemble: bool = Query(True, description="Use XGBoost + LightGBM ensemble"),
-    api_key: str = Depends(verify_api_key),
+    api_key_info: APIKeyInfo = Depends(auth_manager.verify_api_key),
 ):
     """
     Predict optimal fee rates for block inclusion.
@@ -234,7 +242,7 @@ async def get_current_fees():
 async def get_prediction_history(
     request: Request,
     limit: int = Query(50, ge=1, le=100, description="Number of records to return"),
-    api_key: str = Depends(verify_api_key),
+    api_key_info: APIKeyInfo = Depends(auth_manager.verify_api_key),
 ):
     """
     Get history of fee predictions and their validation results.
@@ -276,7 +284,7 @@ async def get_prediction_history(
 @limiter.limit("20/minute")
 async def list_models(
     request: Request,
-    api_key: str = Depends(verify_api_key),
+    api_key_info: APIKeyInfo = Depends(auth_manager.verify_api_key),
 ):
     """List all loaded model information"""
     return inference.get_loaded_models_info() if inference else {"error": "Models not loaded"}
@@ -286,7 +294,7 @@ async def list_models(
 @limiter.limit("20/minute")
 async def get_model_metadata(
     request: Request,
-    api_key: str = Depends(verify_api_key),
+    api_key_info: APIKeyInfo = Depends(auth_manager.verify_api_key),
 ):
     """
     Get comprehensive model metadata including version, training info, and performance metrics.

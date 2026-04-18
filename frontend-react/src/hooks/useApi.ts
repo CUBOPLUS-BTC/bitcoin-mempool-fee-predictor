@@ -197,26 +197,38 @@ export function useApi() {
     }
   }, [addLog]);
 
-  // Initial load
+  const loadHistoricalData = useCallback(async () => {
+    try {
+      addLog('Loading historical chart data...', 'info');
+      const response = await fetch('/historical_data.json');
+      if (response.ok) {
+        const historical = await response.json();
+        if (historical.data && historical.data.length > 0) {
+          setChartData(historical.data);
+          addLog(`Loaded ${historical.data.length} historical data points`, 'success');
+        }
+      }
+    } catch (e) {
+      addLog('No historical data available', 'warning');
+    }
+  }, [addLog]);
+
   useEffect(() => {
-    addLog('System initialized', 'success');
-    addLog('Connecting to API...', 'info');
-    
-    fetchHealth();
+    loadHistoricalData(); // Load historical data first
     fetchCurrentFees();
     fetchPrediction();
-    
-    // Auto refresh intervals
-    const feesInterval = setInterval(fetchCurrentFees, 30000);
-    const predInterval = setInterval(fetchPrediction, 60000);
-    const healthInterval = setInterval(fetchHealth, 60000);
-    
+    fetchHealth();
+
+    const feesInterval = setInterval(fetchCurrentFees, 60000); // 1 min
+    const predInterval = setInterval(fetchPrediction, 60000); // 1 min
+    const healthInterval = setInterval(fetchHealth, 30000); // 30 sec
+
     return () => {
       clearInterval(feesInterval);
       clearInterval(predInterval);
       clearInterval(healthInterval);
     };
-  }, [fetchCurrentFees, fetchPrediction, fetchHealth, addLog]);
+  }, [fetchCurrentFees, fetchPrediction, fetchHealth, loadHistoricalData, addLog]);
 
   return {
     prediction,
