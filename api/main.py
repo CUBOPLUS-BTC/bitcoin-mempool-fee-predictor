@@ -282,6 +282,107 @@ async def list_models(
     return inference.get_loaded_models_info() if inference else {"error": "Models not loaded"}
 
 
+@app.get("/model-metadata", tags=["Models"])
+@limiter.limit("20/minute")
+async def get_model_metadata(
+    request: Request,
+    api_key: str = Depends(verify_api_key),
+):
+    """
+    Get comprehensive model metadata including version, training info, and performance metrics.
+    
+    Returns model version, training timestamp, and validation metrics (MAE, RMSE).
+    """
+    try:
+        import json
+        from pathlib import Path
+        
+        metadata = {
+            "model_version": "2.0.0",
+            "api_version": "2.0.0",
+            "framework": "XGBoost + LightGBM Ensemble",
+            "horizons_supported": [1, 3, 6],
+            "timestamp": datetime.now().isoformat(),
+            "models": {}
+        }
+        
+        # Load model info for each horizon
+        for horizon in [1, 3, 6]:
+            model_info = {
+                "horizon_blocks": horizon,
+                "loaded": False,
+                "training_timestamp": None,
+                "metrics": {}
+            }
+            
+            # Check XGBoost model
+            xgb_path = Path(f"models/production/xgb_fee_{horizon}block.json")
+            if xgb_path.exists():
+                try:
+                    with open(xgb_path, 'r') as f:
+                        xgb_data = json.load(f)
+                    model_info["xgboost"] = {
+                        "loaded": True,
+                        "version": xgb_data.get("version", "unknown"),
+                        "training_timestamp": xgb_data.get("training_timestamp"),
+                        "n_features": xgb_data.get("learner", {}).get("attributes", {}).get("feature_names", []),
+                    }
+                    model_info["loaded"] = True
+                except Exception as e:
+                    logger.warning(f"Could not load XGB metadata for {horizon}-block: {e}")
+            
+            # Check LightGBM model
+            lgb_path = Path(f"models/production/lgbm_fee_{horizon}block.txt")
+            if lgb_path.exists():
+                try:
+                    # LightGBM models are text-based, parse header for metadata
+                    with open(lgb_path, 'r') as f:
+                        header_lines = [f.readline() for _ in range(20)]
+                    
+                    model_info["lightgbm"] = {
+                        "loaded": True,
+                        "file_size_kb": round(lgb_path.stat().st_size / 1024, 2),
+                        "last_modified": datetime.fromtimestamp(lgb_path.stat().st_mtime).isoformat(),
+                    }
+                    model_info["loaded"] = True
+                except Exception as e:
+                    logger.warning(f"Could not load LGB metadata for {horizon}-block: {e}")
+            
+            # Load training metrics from summary file
+            summary_path = Path(f"models/training_summary_{horizon}block.json")
+            if summary_path.exists():
+                try:
+                    with open(summary_path, 'r') as f:
+                        summary = json.load(f)
+                    
+                    model_info["training_timestamp"] = summary.get("training_timestamp")
+                    model_info["metrics"] = {
+                        "mae": summary.get("validation_mae"),
+                        "rmse": summary.get("validation_rmse"),
+                        "mape": summary.get("validation_mape"),
+                        "r2": summary.get("validation_r2"),
+                        "n_samples": summary.get("n_train_samples"),
+                    }
+                except Exception as e:
+                    logger.warning(f"Could not load training summary for {horizon}-block: {e}")
+            
+            metadata["models"][f"{horizon}_block"] = model_info
+        
+        # Add overall system status
+        loaded_models = inference.get_loaded_models_info() if inference else {}
+        metadata["system_status"] = {
+            "total_models_loaded": loaded_models.get("total_models", 0),
+            "xgb_models": loaded_models.get("xgb_models", []),
+            "lgb_models": loaded_models.get("lgb_models", []),
+        }
+        
+        return metadata
+        
+    except Exception as e:
+        logger.error(f"Error fetching model metadata: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching model metadata")
+
+
 @app.get("/mempool/blocks", tags=["Mempool"])
 async def get_mempool_blocks():
     """Get projected mempool blocks with fee ranges"""

@@ -10,6 +10,8 @@ export interface FeePrediction {
     xgb: number;
     lgb: number;
   };
+  feature_weights?: Record<string, number>;
+  decision_reasoning?: string;
   timestamp: string;
 }
 
@@ -68,4 +70,14 @@ export interface LogEntry {
   time: string;
   msg: string;
   type: LogType;
+}
+
+// Mempool.space API response
+export interface MempoolSpaceResponse {
+  fastestFee: number;
+  halfHourFee: number;
+  hourFee: number;
+  economyFee: number;
+  minimumFee: number;
+  timestamp: string;
 }

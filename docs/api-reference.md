@@ -100,7 +100,29 @@ GET /fees/predict
 | `confidence_score` | float | 0-1 confidence in prediction |
 | `priority` | string | high/medium/low based on mempool pressure |
 | `models_used` | array | Which ML models contributed |
+| `feature_weights` | object | Top 10 XGBoost feature importance scores |
+| `decision_reasoning` | string | Human-readable explanation of the prediction |
 | `recommendation` | object | Curated fee suggestions for different urgency |
+
+**Example with Feature Weights:**
+
+```json
+{
+  "1_block": {
+    "predicted_fee_sat_vb": 20,
+    "confidence_score": 0.85,
+    "priority": "high",
+    "feature_weights": {
+      "mempool_vsize_mb": 0.2341,
+      "fee_fastest": 0.1982,
+      "congestion_index": 0.1654,
+      "blocks_last_hour": 0.1023,
+      "fee_spread": 0.0891
+    },
+    "decision_reasoning": "Mempool is moderately congested (45,230 transactions, 150.5 MB). Prediction of 20 sat/vB for 1-block confirmation based on key factors: mempool_vsize_mb, fee_fastest, congestion_index. Priority level: HIGH."
+  }
+}
+```
 
 ---
 
@@ -220,6 +242,75 @@ GET /models
   "timestamp": "2026-04-17T17:30:00Z"
 }
 ```
+
+---
+
+### Model Metadata
+
+Get comprehensive model metadata including version, training timestamp, and performance metrics (MAE, RMSE).
+
+```http
+GET /model-metadata
+```
+
+**Headers:**
+- `X-API-Key: your-api-key` (required)
+
+**Rate Limit:** 20 requests per minute
+
+**Response:**
+```json
+{
+  "model_version": "2.0.0",
+  "api_version": "2.0.0",
+  "framework": "XGBoost + LightGBM Ensemble",
+  "horizons_supported": [1, 3, 6],
+  "timestamp": "2026-04-18T15:30:00Z",
+  "models": {
+    "1_block": {
+      "horizon_blocks": 1,
+      "loaded": true,
+      "training_timestamp": "2026-04-18T14:00:00Z",
+      "xgboost": {
+        "loaded": true,
+        "version": "2.1.0",
+        "n_features": 45
+      },
+      "lightgbm": {
+        "loaded": true,
+        "file_size_kb": 156.3,
+        "last_modified": "2026-04-18T14:00:00Z"
+      },
+      "metrics": {
+        "mae": 2.34,
+        "rmse": 3.87,
+        "mape": 0.12,
+        "r2": 0.89,
+        "n_samples": 15000
+      }
+    },
+    "3_block": { ... },
+    "6_block": { ... }
+  },
+  "system_status": {
+    "total_models_loaded": 6,
+    "xgb_models": [1, 3, 6],
+    "lgb_models": [1, 3, 6]
+  }
+}
+```
+
+**Field Descriptions:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `model_version` | string | Overall model system version |
+| `horizons_supported` | array | Block horizons available (1, 3, 6) |
+| `metrics.mae` | float | Mean Absolute Error on validation set |
+| `metrics.rmse` | float | Root Mean Squared Error on validation set |
+| `metrics.mape` | float | Mean Absolute Percentage Error |
+| `metrics.r2` | float | R-squared (coefficient of determination) |
+| `training_timestamp` | string | When model was last trained |
 
 ---
 

@@ -201,6 +201,31 @@ class FeeModelInference:
             else:
                 confidence = 0.75  # Default for single model
 
+            # Extract feature importance from XGBoost if available
+            feature_weights = {}
+            if xgb_model and hasattr(xgb_model, 'feature_importances_'):
+                try:
+                    importances = xgb_model.feature_importances_
+                    # Get feature names (if available) or use indices
+                    feature_names = getattr(xgb_model, 'feature_names_in_', None)
+                    if feature_names is not None:
+                        for name, importance in zip(feature_names, importances):
+                            feature_weights[name] = round(float(importance), 4)
+                    else:
+                        # Use generic feature names
+                        for i, importance in enumerate(importances):
+                            feature_weights[f'feature_{i}'] = round(float(importance), 4)
+                except Exception as e:
+                    logger.warning(f"Could not extract feature importance: {e}")
+            
+            # Sort by importance and get top features
+            top_features = dict(sorted(feature_weights.items(), key=lambda x: x[1], reverse=True)[:10])
+            
+            # Build decision reasoning
+            reasoning = self._build_decision_reasoning(
+                features, predicted_fee_rounded, priority, top_features, horizon
+            )
+
             result = {
                 'horizon_blocks': horizon,
                 'predicted_fee_sat_vb': predicted_fee_rounded,
@@ -210,6 +235,8 @@ class FeeModelInference:
                 'priority': priority,
                 'models_used': [name for name, _ in predictions],
                 'individual_predictions': {name: round(p, 2) for name, p in predictions},
+                'feature_weights': top_features,
+                'decision_reasoning': reasoning,
                 'timestamp': datetime.now().isoformat()
             }
 
@@ -294,6 +321,64 @@ class FeeModelInference:
         }
 
         return response
+
+    def _build_decision_reasoning(
+        self,
+        features: pd.DataFrame,
+        predicted_fee: float,
+        priority: str,
+        top_features: Dict[str, float],
+        horizon: int
+    ) -> str:
+        """
+        Build human-readable explanation for the prediction.
+        
+        Args:
+            features: DataFrame with feature values
+            predicted_fee: The predicted fee rate
+            priority: Priority level (high/medium/low)
+            top_features: Top contributing features
+            horizon: Block horizon
+            
+        Returns:
+            Human-readable reasoning string
+        """
+        try:
+            # Get key mempool metrics from features
+            latest = features.iloc[-1]
+            
+            # Extract relevant metrics
+            mempool_size_mb = latest.get('mempool_vsize_mb', 0)
+            tx_count = int(latest.get('mempool_tx_count', 0))
+            congestion = latest.get('congestion_index', 1.0)
+            
+            # Build reasoning based on mempool state
+            if congestion > 5:
+                congestion_desc = "extremely congested"
+            elif congestion > 2:
+                congestion_desc = "heavily congested"
+            elif congestion > 1:
+                congestion_desc = "moderately congested"
+            else:
+                congestion_desc = "low congestion"
+            
+            # Top 3 features for explanation
+            top_3 = list(top_features.keys())[:3]
+            feature_str = ", ".join(top_3) if top_3 else "mempool state metrics"
+            
+            # Build reasoning sentence
+            reasoning = (
+                f"Mempool is {congestion_desc} ({tx_count:,} transactions, {mempool_size_mb:.1f} MB). "
+                f"Prediction of {predicted_fee} sat/vB for {horizon}-block confirmation based on "
+                f"key factors: {feature_str}. "
+                f"Priority level: {priority.upper()}."
+            )
+            
+            return reasoning
+            
+        except Exception as e:
+            logger.warning(f"Could not build reasoning: {e}")
+            return f"Prediction based on mempool analysis for {horizon}-block horizon."
 
     def _get_recommendation(self, predictions: Dict, snapshot) -> str:
         """

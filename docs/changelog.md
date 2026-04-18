@@ -6,6 +6,53 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.1.0] - 2026-04-18
+
+### 🧠 Model Explainability & Transparency
+
+#### Added
+- **Feature Weights in Predictions** (`src/inference.py`)
+  - XGBoost feature importance extraction
+  - Top 10 contributing features returned in `/predict` response
+  - Human-readable `feature_weights` object
+
+- **Decision Reasoning** (`src/inference.py`)
+  - Auto-generated explanation for each prediction
+  - Mempool congestion description
+  - Key factors influencing the prediction
+  - Returns `decision_reasoning` string in API response
+
+- **Model Metadata Endpoint** (`api/main.py`)
+  - New `GET /model-metadata` endpoint
+  - Returns model version, training timestamp
+  - Validation metrics: MAE, RMSE, MAPE, R²
+  - Per-horizon model information (XGBoost + LightGBM)
+
+### 📊 Shadow Deployment & Monitoring
+
+#### Added
+- **Dual API Consumption** (`frontend-react/src/hooks/useApi.ts`)
+  - Parallel fetch from local API + mempool.space
+  - Real-time comparison of ML predictions vs actual fees
+  - Automatic chart data aggregation
+
+- **Shadow Deployment Chart** (`frontend-react/src/components/FeeChart.tsx`)
+  - New visualization component using Recharts
+  - Shows ML predictions vs mempool.space actuals
+  - Statistical comparison (avg diff, max diff, bias detection)
+  - Last 50 data points with time series
+
+### 📦 Data Versioning
+
+#### Added
+- **DVC Integration**
+  - `.dvc/` configuration directory
+  - `.dvcignore` for excluding temporary files
+  - `data/snapshots.dvc` for tracking snapshot data
+  - Setup for reproducible ML pipelines
+
+---
+
 ## [2.0.0] - 2026-04-16
 
 ### 🔒 Security (Major Update)

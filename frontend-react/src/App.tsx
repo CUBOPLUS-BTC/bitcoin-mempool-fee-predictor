@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Header } from './components/Header';
 import { FeeCard } from './components/FeeCard';
+import { FeeChart } from './components/FeeChart';
 import { HexStream } from './components/HexStream';
 import { SystemLogs } from './components/SystemLogs';
 import { ExecuteButton } from './components/ExecuteButton';
@@ -16,6 +17,7 @@ function App() {
     health,
     logs,
     loading,
+    chartData,
     fetchPrediction,
     addLog,
   } = useApi();
@@ -81,6 +83,12 @@ function App() {
                 undefined
               }
             />
+            
+            {/* Shadow Deployment Chart */}
+            <div className="flex-1 min-h-0 border border-terminal-border bg-terminal-bg/50 rounded p-3">
+              <FeeChart data={chartData} />
+            </div>
+            
             <ExecuteButton onClick={handleExecute} loading={loading} />
           </main>
 

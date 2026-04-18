@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { PredictResponse, CurrentFeesResponse, HealthResponse, LogEntry, LogType } from '../types/api';
+import type { PredictResponse, CurrentFeesResponse, HealthResponse, LogEntry, LogType, MempoolSpaceResponse } from '../types/api';
 
 // Security: Dynamic API base URL
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -20,13 +20,25 @@ function sanitize(str: string): string {
   return div.innerHTML;
 }
 
+export interface ChartDataPoint {
+  timestamp: string;
+  predicted_1block: number;
+  predicted_3blocks: number;
+  predicted_6blocks: number;
+  mempool_fastest: number;
+  mempool_halfhour: number;
+  mempool_hour: number;
+}
+
 export function useApi() {
   const [prediction, setPrediction] = useState<PredictResponse | null>(null);
   const [currentFees, setCurrentFees] = useState<CurrentFeesResponse | null>(null);
+  const [mempoolSpaceData, setMempoolSpaceData] = useState<MempoolSpaceResponse | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
 
   const addLog = useCallback((msg: string, type: LogType = 'info') => {
     const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -63,7 +75,39 @@ export function useApi() {
         throw new Error('Invalid prediction values');
       }
       
+      // Log feature weights if available
+      if (p1.feature_weights) {
+        const topFeature = Object.entries(p1.feature_weights)[0];
+        if (topFeature) {
+          addLog(`Top feature: ${topFeature[0]} (${(topFeature[1] * 100).toFixed(1)}%)`, 'info');
+        }
+      }
+      
+      // Log decision reasoning if available
+      if (p1.decision_reasoning) {
+        addLog(`Reasoning: ${p1.decision_reasoning.substring(0, 60)}...`, 'info');
+      }
+      
       setPrediction(data);
+      
+      // Add to chart data for shadow deployment comparison
+      const mempoolData = mempoolSpaceData || await fetchMempoolSpaceData();
+      if (mempoolData) {
+        const newDataPoint: ChartDataPoint = {
+          timestamp: new Date().toISOString(),
+          predicted_1block: p1.predicted_fee_sat_vb,
+          predicted_3blocks: p3.predicted_fee_sat_vb,
+          predicted_6blocks: p6.predicted_fee_sat_vb,
+          mempool_fastest: mempoolData.fastestFee,
+          mempool_halfhour: mempoolData.halfHourFee,
+          mempool_hour: mempoolData.hourFee,
+        };
+        
+        setChartData(prev => {
+          const updated = [...prev, newDataPoint].slice(-50); // Keep last 50 points
+          return updated;
+        });
+      }
       
       addLog(
         `Ensemble: 1blk=${p1.predicted_fee_sat_vb}, XGB=${p1.individual_predictions.xgb.toFixed(2)}, LGB=${p1.individual_predictions.lgb.toFixed(2)}`,
@@ -80,9 +124,33 @@ export function useApi() {
     }
   }, [addLog]);
 
+  const fetchMempoolSpaceData = useCallback(async () => {
+    try {
+      addLog('Fetching mempool.space data (shadow source)...', 'info');
+      
+      // Fetch from mempool.space API (no API key needed)
+      const res = await fetch('https://mempool.space/api/v1/fees/recommended');
+      if (!res.ok) throw new Error(`Mempool.space HTTP ${res.status}`);
+      
+      const data: MempoolSpaceResponse = await res.json();
+      data.timestamp = new Date().toISOString();
+      
+      setMempoolSpaceData(data);
+      addLog(
+        `Mempool.space: fastest=${data.fastestFee}, halfHour=${data.halfHourFee}`,
+        'success'
+      );
+      return data;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      addLog(`Mempool.space Error: ${msg}`, 'warning');
+      return null;
+    }
+  }, [addLog]);
+
   const fetchCurrentFees = useCallback(async () => {
     try {
-      addLog('Fetching mempool data...', 'info');
+      addLog('Fetching local mempool data...', 'info');
       
       // Security: Include API key in headers
       const headers: Record<string, string> = {};
@@ -90,21 +158,26 @@ export function useApi() {
         headers['X-API-Key'] = API_KEY;
       }
       
-      const res = await fetch(`${API_BASE}/fees/current`, { headers });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Parallel fetch from both APIs
+      const [localRes, mempoolSpaceData] = await Promise.all([
+        fetch(`${API_BASE}/fees/current`, { headers }),
+        fetchMempoolSpaceData()
+      ]);
       
-      const data: CurrentFeesResponse = await res.json();
+      if (!localRes.ok) throw new Error(`HTTP ${localRes.status}`);
+      
+      const data: CurrentFeesResponse = await localRes.json();
       setCurrentFees(data);
       
       addLog(
-        `Mempool: ${data.mempool.tx_count.toLocaleString()} txs, ${data.mempool.vsize_mb} MB`,
+        `Local API: ${data.mempool.tx_count.toLocaleString()} txs, ${data.mempool.vsize_mb} MB`,
         'success'
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
       addLog(`API Error: ${msg}`, 'error');
     }
-  }, [addLog]);
+  }, [addLog, fetchMempoolSpaceData]);
 
   const fetchHealth = useCallback(async () => {
     try {
@@ -148,12 +221,15 @@ export function useApi() {
   return {
     prediction,
     currentFees,
+    mempoolSpaceData,
     health,
     logs,
     loading,
     error,
+    chartData,
     fetchPrediction,
     fetchCurrentFees,
+    fetchMempoolSpaceData,
     addLog,
   };
 }

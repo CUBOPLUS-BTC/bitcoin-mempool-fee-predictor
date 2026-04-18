@@ -1,0 +1,4 @@
+outs:
+- hash: md5
+  size: 0
+  path: snapshots

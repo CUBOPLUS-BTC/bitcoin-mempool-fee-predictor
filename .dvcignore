@@ -1,0 +1,31 @@
+# Add patterns of files dvc should ignore, which could improve
+# the performance. Learn more at https://dvc.org/doc/user-guide/dvcignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Logs
+logs/
+*.log
+
+# Node.js
+node_modules/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
