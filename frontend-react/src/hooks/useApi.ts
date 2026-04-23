@@ -13,12 +13,7 @@ function validateNumber(value: number, min: number, max: number): number | null 
   return !isNaN(num) && num >= min && num <= max ? num : null;
 }
 
-// Security: Sanitize string to prevent XSS
-function sanitize(str: string): string {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+
 
 export interface ChartDataPoint {
   timestamp: string;
@@ -159,7 +154,7 @@ export function useApi() {
       }
       
       // Parallel fetch from both APIs
-      const [localRes, mempoolSpaceData] = await Promise.all([
+      const [localRes, _mempoolSpaceData] = await Promise.all([
         fetch(`${API_BASE}/fees/current`, { headers }),
         fetchMempoolSpaceData()
       ]);
