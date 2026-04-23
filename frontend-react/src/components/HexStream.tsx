@@ -62,7 +62,7 @@ export function HexStream({ predictions, blockHash }: HexStreamProps) {
       
       <div 
         ref={scrollRef}
-        className="scrolling-hex flex-1 overflow-y-auto p-4 pt-10 text-xs leading-relaxed opacity-80 space-y-1"
+        className="scrolling-hex flex-1 overflow-auto whitespace-nowrap p-4 pt-10 text-xs leading-relaxed opacity-80 space-y-1"
       >
         {rows.map((row, i) => (
           <div key={i} className={`flex gap-4 ${row.color} ${row.isBold ? 'font-bold' : ''}`}>

@@ -46,14 +46,14 @@ function App() {
 
   return (
     <div className="dark">
-      <div className="relative h-screen w-screen p-4 flex flex-col gap-4 overflow-hidden bg-terminal-bg text-terminal-text font-mono">
+      <div className="relative min-h-screen lg:h-screen w-full p-2 lg:p-4 flex flex-col gap-4 overflow-x-hidden overflow-y-auto lg:overflow-hidden bg-terminal-bg text-terminal-text font-mono">
         <CrtOverlay />
         
         <Header status={status} />
         
-        <div className="flex-1 flex gap-4 overflow-hidden z-40">
+        <div className="flex-1 flex flex-col lg:flex-row gap-4 overflow-visible lg:overflow-hidden z-40">
           {/* Left Sidebar - Fee Cards */}
-          <aside className="w-64 flex flex-col gap-4">
+          <aside className="w-full lg:w-64 flex flex-col sm:flex-row lg:flex-col gap-4 shrink-0">
             <FeeCard
               title="Priority_Low"
               prediction={prediction?.fee_predictions['6_blocks']}
@@ -75,7 +75,7 @@ function App() {
           </aside>
 
           {/* Main Content */}
-          <main className="flex-1 flex flex-col gap-4 overflow-hidden">
+          <main className="flex-1 flex flex-col gap-4 min-h-[500px] lg:min-h-0 lg:overflow-hidden">
             <HexStream 
               predictions={predictions}
               blockHash={prediction?.mempool_snapshot ? 
@@ -93,7 +93,7 @@ function App() {
           </main>
 
           {/* Right Sidebar - Logs */}
-          <aside className="w-72 flex flex-col z-40">
+          <aside className="w-full lg:w-72 flex flex-col z-40 shrink-0 mb-4 lg:mb-0">
             <SystemLogs 
               logs={logs} 
               cpuLoad={cpuLoad}
