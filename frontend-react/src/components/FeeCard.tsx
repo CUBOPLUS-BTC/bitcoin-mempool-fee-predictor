@@ -38,12 +38,12 @@ export function FeeCard({ title, prediction, networkFee, priority }: FeeCardProp
   const confidence = prediction ? Math.round(prediction.confidence_score * 100) : 0;
 
   return (
-    <div className={`hud-border bg-black/60 p-4 flex-1 flex flex-col justify-between ${styles.border}`}>
+    <div className={`hud-border bg-black/60 p-3 flex-1 flex flex-col justify-between ${styles.border}`}>
       <div>
         <div className={`text-[10px] opacity-60 uppercase tracking-widest ${styles.text} font-bold`}>
           {title}
         </div>
-        <div className="mt-4 space-y-3">
+        <div className="mt-3 space-y-2">
           <div className={`flex justify-between items-end border-b ${styles.border}/20 pb-1`}>
             <span className="text-[8px] opacity-60">ENSEMBLE_PRED</span>
             <div className="text-right">
@@ -75,7 +75,7 @@ export function FeeCard({ title, prediction, networkFee, priority }: FeeCardProp
         </div>
       </div>
       
-      <div className={`w-full ${styles.barBg} h-1 mt-4`}>
+      <div className={`w-full ${styles.barBg} h-1 mt-3`}>
         <div 
           className={`${styles.barFill} h-full transition-all duration-500 ${styles.glow}`}
           style={{ width: `${confidence}%` }}
