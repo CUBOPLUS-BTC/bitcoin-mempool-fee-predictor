@@ -85,7 +85,7 @@ function App() {
             />
             
             {/* Shadow Deployment Chart */}
-            <div className="flex-1 min-h-0 border border-terminal-border bg-terminal-bg/50 rounded p-3">
+            <div className="flex-1 min-h-[250px] lg:min-h-0 border border-terminal-border bg-terminal-bg/50 rounded p-3">
               <FeeChart data={chartData} />
             </div>
             
@@ -93,7 +93,7 @@ function App() {
           </main>
 
           {/* Right Sidebar - Logs */}
-          <aside className="w-full lg:w-72 flex flex-col z-40 shrink-0 mb-4 lg:mb-0">
+          <aside className="w-full lg:w-72 flex flex-col min-h-[300px] lg:min-h-0 z-40 shrink-0 mb-4 lg:mb-0">
             <SystemLogs 
               logs={logs} 
               cpuLoad={cpuLoad}

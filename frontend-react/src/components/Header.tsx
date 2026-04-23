@@ -6,7 +6,7 @@ interface HeaderProps {
 
 export function Header({ status }: HeaderProps) {
   return (
-    <header className="hud-border bg-black/40 backdrop-blur-sm p-4 flex justify-between items-center z-40 border-white/20">
+    <header className="hud-border bg-black/40 backdrop-blur-sm p-3 lg:p-4 flex flex-col sm:flex-row justify-between items-center z-40 border-white/20 gap-2 sm:gap-0">
       <div className="flex items-center gap-4">
         <Terminal className="w-8 h-8 text-white" />
         <div>

@@ -4,7 +4,7 @@ interface FooterProps {
 
 export function Footer({ latestBlock }: FooterProps) {
   return (
-    <footer className="hud-border bg-black/40 backdrop-blur-sm px-6 py-2 flex justify-between items-center text-[10px] z-40 border-white/10">
+    <footer className="hud-border bg-black/40 backdrop-blur-sm p-3 lg:px-6 lg:py-2 flex flex-col sm:flex-row justify-between items-center text-[10px] z-40 border-white/10 gap-2 sm:gap-0">
       <div className="flex gap-8">
         <a href="http://localhost:8000/docs" target="_blank" rel="noopener noreferrer" className="hover:text-mempool-blue hover:underline">
           &gt; SWAGGER_UI
