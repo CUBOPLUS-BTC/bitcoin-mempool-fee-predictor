@@ -144,6 +144,16 @@ export function FeeChart({ data }: FeeChartProps) {
               isAnimationActive={false}
               strokeDasharray="4 4"
             />
+            <Line
+              type="monotone"
+              dataKey="predicted_6blocks"
+              name="ML (6-blocks)"
+              stroke="#006622"
+              strokeWidth={1}
+              dot={{ fill: '#006622', strokeWidth: 0, r: 2 }}
+              isAnimationActive={false}
+              strokeDasharray="2 2"
+            />
             
             {/* Mempool.space (Reality) */}
             <Line
@@ -165,6 +175,16 @@ export function FeeChart({ data }: FeeChartProps) {
               dot={{ fill: '#ffaa6b', strokeWidth: 0, r: 2 }}
               isAnimationActive={false}
               strokeDasharray="4 4"
+            />
+            <Line
+              type="monotone"
+              dataKey="mempool_hour"
+              name="Mempool.space (1hour)"
+              stroke="#cc5544"
+              strokeWidth={1}
+              dot={{ fill: '#cc5544', strokeWidth: 0, r: 2 }}
+              isAnimationActive={false}
+              strokeDasharray="2 2"
             />
             
             {/* Zero line reference */}
