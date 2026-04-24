@@ -33,7 +33,7 @@ const priorityStyles = {
 
 export function FeeCard({ title, prediction, networkFee, priority }: FeeCardProps) {
   const styles = priorityStyles[priority];
-  const predValue = prediction?.predicted_fee_sat_vb ?? '--';
+  const predValue = prediction?.predicted_fee_exact ?? prediction?.predicted_fee_sat_vb ?? '--';
   const netValue = networkFee ?? '--';
   const confidence = prediction ? Math.round(prediction.confidence_score * 100) : 0;
 

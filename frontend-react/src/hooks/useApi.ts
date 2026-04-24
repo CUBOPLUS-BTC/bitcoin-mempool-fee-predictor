@@ -90,9 +90,9 @@ export function useApi() {
       if (mempoolData) {
         const newDataPoint: ChartDataPoint = {
           timestamp: new Date().toISOString(),
-          predicted_1block: p1.predicted_fee_sat_vb,
-          predicted_3blocks: p3.predicted_fee_sat_vb,
-          predicted_6blocks: p6.predicted_fee_sat_vb,
+          predicted_1block: p1.predicted_fee_exact || p1.predicted_fee_sat_vb,
+          predicted_3blocks: p3.predicted_fee_exact || p3.predicted_fee_sat_vb,
+          predicted_6blocks: p6.predicted_fee_exact || p6.predicted_fee_sat_vb,
           mempool_fastest: mempoolData.fastestFee,
           mempool_halfhour: mempoolData.halfHourFee,
           mempool_hour: mempoolData.hourFee,
@@ -105,7 +105,7 @@ export function useApi() {
       }
       
       addLog(
-        `Ensemble: 1blk=${p1.predicted_fee_sat_vb}, XGB=${p1.individual_predictions.xgb.toFixed(2)}, LGB=${p1.individual_predictions.lgb.toFixed(2)}`,
+        `Ensemble: 1blk=${p1.predicted_fee_exact || p1.predicted_fee_sat_vb}, XGB=${p1.individual_predictions.xgb.toFixed(2)}, LGB=${p1.individual_predictions.lgb.toFixed(2)}`,
         'success'
       );
       addLog(`Confidence: ${(p1.confidence_score * 100).toFixed(1)}%`, 'info');
@@ -209,7 +209,8 @@ export function useApi() {
   }, [addLog]);
 
   useEffect(() => {
-    loadHistoricalData(); // Load historical data first
+    // We only want real-time live data, no hardcoded historical data
+    // loadHistoricalData(); 
     fetchCurrentFees();
     fetchPrediction();
     fetchHealth();
