@@ -2,35 +2,35 @@
   "horizon": "1block",
   "xgb_metrics": {
     "horizon_blocks": 1,
-    "mse": 1.0672341426325527,
-    "rmse": 1.0330702505795784,
-    "mae": 0.9956964651743571,
+    "mse": 0.6575682931832793,
+    "rmse": 0.8109058472987349,
+    "mae": 0.7719006538391113,
     "r2": 0.0,
     "block_inclusion_accuracy": 0.0,
     "avg_overpay_sat_vb": 0.0,
     "median_overpay_sat_vb": 0.0,
-    "avg_underpay_sat_vb": 0.9956964651743571,
+    "avg_underpay_sat_vb": 0.7719006538391113,
     "overpay_mape": 0.0,
-    "within_10pct": 0.3333333333333333,
+    "within_10pct": 0.16666666666666666,
     "within_20pct": 1.0,
     "within_50pct": 1.0,
-    "asymmetric_loss": 0.7470638998427868,
-    "mape": 11.063294057492856
+    "asymmetric_loss": 0.4602978052282954,
+    "mape": 12.865010897318522
   },
   "lgb_metrics": {
     "horizon_blocks": 1,
     "model_type": "lightgbm",
-    "mse": 58.90082405222753,
-    "rmse": 7.6746872282997645,
-    "mae": 7.674687169709801,
+    "mse": 25.0,
+    "rmse": 5.0,
+    "mae": 5.0,
     "r2": 0.0,
     "block_inclusion_accuracy": 0.0,
     "avg_overpay_sat_vb": 0.0,
-    "avg_underpay_sat_vb": 7.674687169709801,
+    "avg_underpay_sat_vb": 5.0,
     "within_10pct": 0.0,
     "within_20pct": 0.0,
     "within_50pct": 0.0,
-    "asymmetric_loss": 41.230576836559266,
-    "mape": 85.27430188566444
+    "asymmetric_loss": 17.5,
+    "mape": 83.33333333333334
   }
 }
