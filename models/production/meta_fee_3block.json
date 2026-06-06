@@ -2,20 +2,20 @@
   "horizon": "3block",
   "xgb_metrics": {
     "horizon_blocks": 3,
-    "mse": 1.0457635212773084,
-    "rmse": 1.0226257972872133,
-    "mae": 1.0214955806732178,
+    "mse": 1.643225033991257,
+    "rmse": 1.2818833932894431,
+    "mae": 1.2007322311401367,
     "r2": 0.0,
     "block_inclusion_accuracy": 0.16666666666666666,
-    "avg_overpay_sat_vb": 0.18816224733988443,
+    "avg_overpay_sat_vb": 0.3673988978068034,
     "median_overpay_sat_vb": 0.0,
     "avg_underpay_sat_vb": 0.8333333333333334,
-    "overpay_mape": 9.40811236699422,
+    "overpay_mape": 18.36994489034017,
     "within_10pct": 0.0,
     "within_20pct": 0.0,
     "within_50pct": 0.0,
-    "asymmetric_loss": 0.6470623897165259,
-    "mape": 51.07477903366089
+    "asymmetric_loss": 0.8263008435307104,
+    "mape": 60.036611557006836
   },
   "lgb_metrics": {
     "horizon_blocks": 3,
