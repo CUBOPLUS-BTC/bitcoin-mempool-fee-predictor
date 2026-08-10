@@ -20,17 +20,17 @@
   "lgb_metrics": {
     "horizon_blocks": 1,
     "model_type": "lightgbm",
-    "mse": 0.6183443658838582,
-    "rmse": 0.7863487558862532,
-    "mae": 0.7685484553366032,
+    "mse": 1.0,
+    "rmse": 1.0,
+    "mae": 1.0,
     "r2": 0.0,
     "block_inclusion_accuracy": 0.0,
     "avg_overpay_sat_vb": 0.0,
-    "avg_underpay_sat_vb": 0.7685484553366032,
+    "avg_underpay_sat_vb": 1.0,
     "within_10pct": 0.0,
     "within_20pct": 0.0,
-    "within_50pct": 1.0,
-    "asymmetric_loss": 0.43284105611870066,
-    "mape": 38.42742276683016
+    "within_50pct": 0.0,
+    "asymmetric_loss": 0.7000000000000001,
+    "mape": 50.0
   }
 }
